@@ -25,12 +25,10 @@ for deg = 60, 360, 60 do
 end
 -- 法兰侧部固定螺丝
 base:cut(cylinder.new(config.r_m2_hole, 2 * config.r_base_down):x(-config.r_base_down):z(config.z_base_m2_hole):ry(90));
--- 水平线孔
-base:cut(cylinder.new(config.r_base_horiz_hole, config.r_base_down):z(config.z_base_horiz_hole):ry(90));
 -- 竖直线孔
 base:cut(cylinder.new(config.r_base_vert_hole, config.h_base));
 base:cut(cylinder.new(config.r_calib_slot, config.h_base):y(-config.r_outer + config.h_calib_slot):z(config.h_base):rx(90));
 base:cut(cylinder.new(config.r_calib_slot, config.h_base):y(config.r_outer - config.h_calib_slot):z(config.h_base):rx(-90));
--- base:export_step('base.step')
+base:export_step('base.step')
 show(base:color('turquoise'))
 return { model = base:copy(), m = base:copy():scale(1e-3) }
