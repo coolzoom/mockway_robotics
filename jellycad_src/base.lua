@@ -1,3 +1,9 @@
+--[[
+Copyright (c) 2025. Li Jianbin. All rights reserved.
+MIT License
+JellyCAD version v0.3.9
+Mockway Structure Base Model File
+--]]
 local config = require('config')
 
 -- 底座实体

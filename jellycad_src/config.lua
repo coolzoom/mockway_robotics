@@ -1,3 +1,9 @@
+--[[
+Copyright (c) 2025. Li Jianbin. All rights reserved.
+MIT License
+JellyCAD version v0.3.9
+Mockway Structure Config File
+--]]
 local config = {}
 -- 通用
 config.r_motor = 57 / 2                                                  -- 电机直径57
