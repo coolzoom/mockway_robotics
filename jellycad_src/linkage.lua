@@ -23,7 +23,8 @@ link2:fuse(fix_flank:copy())
 link2:fuse(fix_flank:copy():rx(180):z(height))
 link2:cut(cylinder.new(config.r_arm_in, height))
 
-link1:color('green'):show()
-link2:show()
--- link:export_step('link.step')
--- return { model = link:copy(), m = link:copy():scale(1e-3), generate_link = generate_link }
+-- link1:color('green'):show()
+-- link2:show()
+-- link1:export_step('link1.step')
+-- link2:export_step('link2.step')
+-- return { model = link:copy(), m1 = link1:copy():scale(1e-3), m2 = link2:copy():scale(1e-3)}

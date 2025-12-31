@@ -1,0 +1,25 @@
+local base = require('base')
+local shell = require('shell')
+-- local lid = require('lid')
+local flank = require('flank')
+-- local elbow = require('elbow')
+-- local linkage = require('linkage')
+-- local tail = require('tail')
+local config = require('config')
+
+local m_joint = shell.m:copy()
+-- m_joint:fuse(lid.m:copy():z((config.h_shell + 1e-3) * 1e-3))
+local m_joint_flank = m_joint:copy()
+m_joint_flank:fuse(flank.m:copy():move('rz', 90):move('ry', 90):x(config.r_outer * 1e-3):z(config.r_outer * 1e-3):copy())
+
+local base_link = base.m:copy()
+base_link:fuse(flank.m:copy():z((config.h_base - config.h_flank) * 1e-3):rz(90))
+local shoulder = m_joint_flank:copy():z((config.h_base + config.h_flank_reserve) * 1e-3)
+
+local upperarm = m_joint:copy():rot(180, -90, 0)
+upperarm:x((config.r_outer + config.h_flank + config.h_flank_reserve) * 1e-3)
+upperarm:z((config.h_base + config.h_flank_reserve + config.r_outer) * 1e-3)
+
+base_link:color('#6495ED'):show()
+shoulder:color('#8470FF'):show()
+upperarm:color('#FFC1C1'):show()

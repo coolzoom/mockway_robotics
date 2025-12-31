@@ -58,6 +58,6 @@ for deg = 60, 360, 60 do
     local z1 = config.r_flank_screw_pos * math.sin(rad) + config.r_outer;
     shell:cut(cylinder.new(config.r_m3d4_nut, config.r_shell_outer):ry(90):pos(0, y1, z1));
 end
-show(shell:color('turquoise'))
-shell:export_step('shell.step')
+-- show(shell:color('turquoise'))
+-- shell:export_step('shell.step')
 return { model = shell:copy(), m = shell:copy():scale(1e-3) }
