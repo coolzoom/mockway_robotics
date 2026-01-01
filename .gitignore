@@ -53,3 +53,5 @@ CATKIN_IGNORE
 
 jellycad_src/*.step
 jellycad_src/*.stl
+
+__pycache__/
