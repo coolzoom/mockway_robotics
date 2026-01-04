@@ -22,7 +22,7 @@ class MotorControlGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("达妙电机控制界面")
-        self.root.geometry("950x580")
+        self.root.geometry("660x720")
 
         # 变量
         self.can_adapter = None
