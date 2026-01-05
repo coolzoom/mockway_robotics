@@ -542,11 +542,7 @@ class MotorControlGUI:
         result = messagebox.askyesno(
             "确认清除错误",
             f"当前错误状态: {state.error.name}\n\n"
-            "清除错误将执行以下操作：\n"
-            "1. 失能电机\n"
-            "2. 等待1秒\n"
-            "3. 重新使能电机\n\n"
-            "是否继续？"
+            "是否发送清除错误命令？"
         )
 
         if result:
@@ -555,56 +551,35 @@ class MotorControlGUI:
                 if self.motion_active:
                     self.stop_motion()
 
-                # 失能电机
-                was_enabled = self.enabled
-                if was_enabled:
-                    self.motor.disable()
-                    self.enabled = False
-                    self.status_label.config(text="状态: 清除错误中...", foreground="orange")
+                # 发送清除错误命令
+                success = self.motor.clear_error()
+                if not success:
+                    messagebox.showerror("错误", "清除错误命令发送失败")
+                    return
 
-                # 等待1秒
-                time.sleep(1.0)
+                # 等待错误清除反馈
+                max_wait_time = 2.0
+                start_wait = time.time()
+                error_cleared = False
 
-                # 重新使能（如果之前是使能状态）
-                if was_enabled:
-                    self.motor.enable()
+                while time.time() - start_wait < max_wait_time:
+                    time.sleep(0.05)
+                    state = self.motor.get_state()
 
-                    # 等待使能状态反馈
-                    max_wait_time = 2.0
-                    start_wait = time.time()
-                    while True:
-                        time.sleep(0.01)
-                        state = self.motor.get_state()
+                    # 检查错误是否已清除
+                    if state.error.value == 0:
+                        error_cleared = True
+                        break
 
-                        # 检查是否超时
-                        if time.time() - start_wait > max_wait_time:
-                            messagebox.showerror("错误", "未能接收到电机使能反馈")
-                            return
-
-                        # 检查是否收到反馈（timestamp更新）
-                        if state.timestamp == 0.0:
-                            continue
-
-                        # 检查使能状态反馈
-                        if state.enabled:
-                            # 使能成功，错误已清除
-                            break
-                        elif state.error.value >= 0x8:
-                            # 仍然有错误
-                            messagebox.showerror("错误", f"错误清除失败，仍有错误: {state.error.name}")
-                            return
-
-                    self.enabled = True
-                    self.enable_btn.config(text="失能电机")
-                    self.status_label.config(text="状态: 已使能", foreground="blue")
-
-                    # 更新当前命令位置
-                    current_pos = state.position
-                    self.current_cmd_position = current_pos
-
-                    messagebox.showinfo("成功", f"错误已清除，电机已重新使能\n当前位置: {current_pos:.3f} rad")
+                if error_cleared:
+                    messagebox.showinfo("成功", "错误已成功清除")
                 else:
-                    messagebox.showinfo("成功", "错误已清除")
+                    # 超时，但可能仍然清除了
+                    state = self.motor.get_state()
+                    if state.error.value == 0:
+                        messagebox.showinfo("成功", "错误已成功清除")
+                    else:
+                        messagebox.showwarning("警告", f"错误清除超时，当前状态: {state.error.name}")
 
             except Exception as e:
                 messagebox.showerror("错误", f"清除错误失败: {e}")

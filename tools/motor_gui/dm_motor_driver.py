@@ -371,6 +371,7 @@ class DMMotor:
     CMD_ENABLE = bytes([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFC])
     CMD_DISABLE = bytes([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFD])
     CMD_SET_ZERO = bytes([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE])
+    CMD_CLEAR_ERROR = bytes([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFB])
 
     def __init__(self, can_adapter: WitMotionUSBCAN, motor_id: int = 1, master_id: int = 0,
                  motor_type: MotorType = MotorType.DM_J4310_2EC):
@@ -516,7 +517,14 @@ class DMMotor:
         if result:
             print(f"电机 {self.motor_id} 零点已设置")
         return result
-    
+
+    def clear_error(self) -> bool:
+        """清除错误状态"""
+        result = self.can.send_can_frame(self.motor_id, self.CMD_CLEAR_ERROR)
+        if result:
+            print(f"电机 {self.motor_id} 清除错误命令已发送")
+        return result
+
     def get_state(self) -> MotorState:
         """获取电机状态"""
         with self._state_lock:
