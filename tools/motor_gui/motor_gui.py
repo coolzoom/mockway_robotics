@@ -22,7 +22,7 @@ class MotorControlGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("达妙电机控制界面")
-        self.root.geometry("660x920")
+        self.root.geometry("1200x700")
 
         # 变量
         self.can_adapter = None
@@ -96,6 +96,10 @@ class MotorControlGUI:
 
     def create_widgets(self):
         """创建界面组件"""
+
+        # 配置列权重，使两列平均分配空间
+        self.root.columnconfigure(0, weight=1)
+        self.root.columnconfigure(1, weight=1)
 
         # ===== 连接配置区 =====
         connection_frame = ttk.LabelFrame(self.root, text="连接配置", padding=10)
@@ -202,16 +206,16 @@ class MotorControlGUI:
 
         # ===== 位置控制区 =====
         position_frame = ttk.LabelFrame(self.root, text="位置控制 (MIT模式 - 梯形加减速)", padding=10)
-        position_frame.grid(row=3, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
+        position_frame.grid(row=3, column=0, padx=(10, 5), pady=5, sticky="nsew")
 
         # 使用说明
         usage_label = ttk.Label(
             position_frame,
-            text="使用说明：按住按钮加速到目标位置，松开按钮开始减速停止",
+            text="按住按钮加速，松开减速停止",
             foreground="blue",
             font=("Arial", 9, "italic")
         )
-        usage_label.grid(row=0, column=0, columnspan=2, pady=(0, 5))
+        usage_label.grid(row=0, column=0, columnspan=2, pady=(0, 8))
 
         # 目标位置显示
         ttk.Label(position_frame, text="目标位置:").grid(row=1, column=0, sticky="w")
@@ -226,13 +230,13 @@ class MotorControlGUI:
             button_frame,
             text="反转 (-12 rad)",
             state="disabled",
-            width=20,
+            width=18,
             height=2,
             bg="#ffcccc",
             activebackground="#ff9999",
-            font=("Arial", 11, "bold")
+            font=("Arial", 10, "bold")
         )
-        self.move_neg_btn.pack(side="left", padx=10)
+        self.move_neg_btn.pack(side="left", padx=5)
         self.move_neg_btn.bind("<ButtonPress-1>", lambda e: self.on_button_press(-12.0))
         self.move_neg_btn.bind("<ButtonRelease-1>", lambda e: self.on_button_release())
 
@@ -240,13 +244,13 @@ class MotorControlGUI:
             button_frame,
             text="正转 (+12 rad)",
             state="disabled",
-            width=20,
+            width=18,
             height=2,
             bg="#ccffcc",
             activebackground="#99ff99",
-            font=("Arial", 11, "bold")
+            font=("Arial", 10, "bold")
         )
-        self.move_pos_btn.pack(side="left", padx=10)
+        self.move_pos_btn.pack(side="left", padx=5)
         self.move_pos_btn.bind("<ButtonPress-1>", lambda e: self.on_button_press(12.0))
         self.move_pos_btn.bind("<ButtonRelease-1>", lambda e: self.on_button_release())
 
@@ -256,16 +260,16 @@ class MotorControlGUI:
 
         # ===== 力矩控制区 =====
         torque_frame = ttk.LabelFrame(self.root, text="力矩控制 (MIT模式 - 纯力矩输出)", padding=10)
-        torque_frame.grid(row=4, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
+        torque_frame.grid(row=3, column=1, padx=(5, 10), pady=5, sticky="nsew")
 
         # 使用说明
         torque_usage_label = ttk.Label(
             torque_frame,
-            text="使用说明：拖动滑块或输入数值设置目标力矩，点击\"启动\"开始力矩控制",
+            text="拖动滑块或输入数值，点击启动开始力矩控制",
             foreground="blue",
             font=("Arial", 9, "italic")
         )
-        torque_usage_label.grid(row=0, column=0, columnspan=4, pady=(0, 10))
+        torque_usage_label.grid(row=0, column=0, columnspan=4, pady=(0, 8))
 
         # 力矩输入区域
         ttk.Label(torque_frame, text="目标力矩 (Nm):", font=("Arial", 10, "bold")).grid(row=1, column=0, sticky="w", padx=(0, 10))
@@ -283,11 +287,11 @@ class MotorControlGUI:
             to=10.0,
             resolution=0.1,
             orient=tk.HORIZONTAL,
-            length=300,
+            length=400,
             command=self.update_torque_from_scale,
             state="disabled"
         )
-        self.torque_scale.grid(row=2, column=0, columnspan=4, pady=(10, 10), padx=20)
+        self.torque_scale.grid(row=2, column=0, columnspan=4, pady=(8, 8), padx=10, sticky="ew")
 
         # 控制按钮区域
         torque_button_frame = ttk.Frame(torque_frame)
@@ -312,27 +316,41 @@ class MotorControlGUI:
         self.stop_torque_btn.pack(side="left", padx=5)
 
         # 快速力矩按钮
-        quick_torque_frame = ttk.Frame(torque_frame)
-        quick_torque_frame.grid(row=4, column=0, columnspan=4, pady=(10, 0))
+        quick_torque_frame = ttk.LabelFrame(torque_frame, text="快速设置", padding=5)
+        quick_torque_frame.grid(row=4, column=0, columnspan=4, pady=(8, 0), sticky="ew")
 
-        ttk.Label(quick_torque_frame, text="快速设置:", font=("Arial", 9)).pack(side="left", padx=(0, 10))
+        # 排列成2行
+        torque_values = [
+            [-5.0, -2.0, -1.0, -0.5],
+            [0.5, 1.0, 2.0, 5.0]
+        ]
 
-        for torque_val in [-5.0, -2.0, -1.0, 0.0, 1.0, 2.0, 5.0]:
-            btn = ttk.Button(
-                quick_torque_frame,
-                text=f"{torque_val:+.1f} Nm",
-                command=lambda t=torque_val: self.set_quick_torque(t),
-                width=8
-            )
-            btn.pack(side="left", padx=2)
+        for row_idx, row_values in enumerate(torque_values):
+            for col_idx, torque_val in enumerate(row_values):
+                btn = ttk.Button(
+                    quick_torque_frame,
+                    text=f"{torque_val:+.1f} Nm",
+                    command=lambda t=torque_val: self.set_quick_torque(t),
+                    width=10
+                )
+                btn.grid(row=row_idx, column=col_idx, padx=2, pady=2)
+
+        # 添加零力矩按钮（居中）
+        zero_btn = ttk.Button(
+            quick_torque_frame,
+            text="0.0 Nm (停止)",
+            command=lambda: self.set_quick_torque(0.0),
+            width=22
+        )
+        zero_btn.grid(row=2, column=0, columnspan=4, padx=2, pady=(5, 2))
 
         # 力矩控制状态显示
         self.torque_status_label = ttk.Label(torque_frame, text="力矩控制: 未激活", foreground="gray", font=("Arial", 9))
-        self.torque_status_label.grid(row=5, column=0, columnspan=4, pady=(10, 0))
+        self.torque_status_label.grid(row=5, column=0, columnspan=4, pady=(8, 0))
 
         # ===== 状态显示区 =====
         status_frame = ttk.LabelFrame(self.root, text="电机状态", padding=10)
-        status_frame.grid(row=5, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
+        status_frame.grid(row=4, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
 
         # 当前位置
         ttk.Label(status_frame, text="当前位置:").grid(row=0, column=0, sticky="w")
