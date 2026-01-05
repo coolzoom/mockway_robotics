@@ -473,33 +473,14 @@ class MotorControlGUI:
                 self.current_cmd_velocity = 0.0
 
             # 使能
-            self.motor.enable()
+            enable_sent = self.motor.enable()
+            if not enable_sent:
+                messagebox.showerror("错误", "使能命令发送失败")
+                return
 
-            # 等待接收到使能状态反馈
-            max_wait_time = 2.0
-            start_wait = time.time()
-            while True:
-                time.sleep(0.01)
-                state = self.motor.get_state()
+            print(f"使能命令已发送")
 
-                # 检查是否超时
-                if time.time() - start_wait > max_wait_time:
-                    messagebox.showerror("错误", "未能接收到电机使能反馈")
-                    return
-
-                # 检查是否收到反馈（timestamp更新）
-                if state.timestamp == 0.0:
-                    continue
-
-                # 检查使能状态反馈
-                if state.enabled:
-                    # 使能成功
-                    break
-                elif state.error.value >= 0x8:
-                    # 发生错误
-                    messagebox.showerror("错误", f"电机使能失败，错误: {state.error.name}")
-                    return
-
+            # 直接设置为使能状态，不等待反馈
             self.enabled = True
             self.enable_btn.config(text="失能电机")
             self.status_label.config(text="状态: 已使能", foreground="blue")
@@ -523,22 +504,9 @@ class MotorControlGUI:
 
             self.motor.disable()
 
-            # 等待失能状态反馈
-            max_wait_time = 2.0
-            start_wait = time.time()
-            while True:
-                time.sleep(0.01)
-                state = self.motor.get_state()
+            print(f"失能命令已发送")
 
-                # 检查是否超时
-                if time.time() - start_wait > max_wait_time:
-                    # 超时也认为失能成功（容错处理）
-                    break
-
-                # 检查失能状态反馈
-                if not state.enabled:
-                    break
-
+            # 直接设置为失能状态，不等待反馈
             self.enabled = False
             self.enable_btn.config(text="使能电机")
             self.status_label.config(text="状态: 已连接", foreground="green")
@@ -600,29 +568,10 @@ class MotorControlGUI:
                     messagebox.showerror("错误", "清除错误命令发送失败")
                     return
 
-                # 等待错误清除反馈
-                max_wait_time = 2.0
-                start_wait = time.time()
-                error_cleared = False
+                print(f"清除错误命令已发送")
 
-                while time.time() - start_wait < max_wait_time:
-                    time.sleep(0.05)
-                    state = self.motor.get_state()
-
-                    # 检查错误是否已清除
-                    if state.error.value == 0:
-                        error_cleared = True
-                        break
-
-                if error_cleared:
-                    messagebox.showinfo("成功", "错误已成功清除")
-                else:
-                    # 超时，但可能仍然清除了
-                    state = self.motor.get_state()
-                    if state.error.value == 0:
-                        messagebox.showinfo("成功", "错误已成功清除")
-                    else:
-                        messagebox.showwarning("警告", f"错误清除超时，当前状态: {state.error.name}")
+                # 直接提示成功，不等待反馈
+                messagebox.showinfo("成功", "清除错误命令已发送")
 
             except Exception as e:
                 messagebox.showerror("错误", f"清除错误失败: {e}")
