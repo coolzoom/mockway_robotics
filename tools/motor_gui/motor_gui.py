@@ -147,7 +147,7 @@ class MotorControlGUI:
         param_frame = ttk.LabelFrame(self.root, text="电机参数配置", padding=10)
         param_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
 
-        # 第一行：电机ID和Master ID
+        # 电机ID和Master ID
         ttk.Label(param_frame, text="电机ID:").grid(row=0, column=0, sticky="w")
         self.motor_id_var = tk.StringVar(value="2")
         ttk.Entry(param_frame, textvariable=self.motor_id_var, width=10).grid(row=0, column=1, padx=5, sticky="w")
@@ -155,24 +155,6 @@ class MotorControlGUI:
         ttk.Label(param_frame, text="Master ID:").grid(row=0, column=2, sticky="w", padx=(20, 0))
         self.master_id_var = tk.StringVar(value="0")
         ttk.Entry(param_frame, textvariable=self.master_id_var, width=10).grid(row=0, column=3, padx=5, sticky="w")
-
-        # 第二行：MIT参数 Kp和Kd
-        ttk.Label(param_frame, text="Kp:").grid(row=1, column=0, sticky="w", pady=(10, 0))
-        self.kp_var = tk.StringVar(value="40.0")
-        ttk.Entry(param_frame, textvariable=self.kp_var, width=10).grid(row=1, column=1, padx=5, pady=(10, 0), sticky="w")
-
-        ttk.Label(param_frame, text="Kd:").grid(row=1, column=2, sticky="w", padx=(20, 0), pady=(10, 0))
-        self.kd_var = tk.StringVar(value="1.0")
-        ttk.Entry(param_frame, textvariable=self.kd_var, width=10).grid(row=1, column=3, padx=5, pady=(10, 0), sticky="w")
-
-        # 第三行：运动参数
-        ttk.Label(param_frame, text="最大速度 (rad/s):").grid(row=2, column=0, sticky="w", pady=(10, 0))
-        self.max_velocity_var = tk.StringVar(value="8.0")
-        ttk.Entry(param_frame, textvariable=self.max_velocity_var, width=10).grid(row=2, column=1, padx=5, pady=(10, 0), sticky="w")
-
-        ttk.Label(param_frame, text="最大加速度 (rad/s²):").grid(row=2, column=2, sticky="w", padx=(20, 0), pady=(10, 0))
-        self.max_acceleration_var = tk.StringVar(value="15.0")
-        ttk.Entry(param_frame, textvariable=self.max_acceleration_var, width=10).grid(row=2, column=3, padx=5, pady=(10, 0), sticky="w")
 
         # ===== 控制区 =====
         control_frame = ttk.LabelFrame(self.root, text="电机控制", padding=10)
@@ -217,14 +199,39 @@ class MotorControlGUI:
         )
         usage_label.grid(row=0, column=0, columnspan=2, pady=(0, 8))
 
+        # 控制参数区域
+        param_subframe = ttk.Frame(position_frame)
+        param_subframe.grid(row=1, column=0, columnspan=2, pady=(0, 10), sticky="ew")
+
+        # 第一行：Kp和Kd
+        ttk.Label(param_subframe, text="Kp:", font=("Arial", 9)).grid(row=0, column=0, sticky="w")
+        self.kp_var = tk.StringVar(value="40.0")
+        ttk.Entry(param_subframe, textvariable=self.kp_var, width=8).grid(row=0, column=1, padx=5, sticky="w")
+
+        ttk.Label(param_subframe, text="Kd:", font=("Arial", 9)).grid(row=0, column=2, sticky="w", padx=(15, 0))
+        self.kd_var = tk.StringVar(value="1.0")
+        ttk.Entry(param_subframe, textvariable=self.kd_var, width=8).grid(row=0, column=3, padx=5, sticky="w")
+
+        # 第二行：最大速度和最大加速度
+        ttk.Label(param_subframe, text="最大速度 (rad/s):", font=("Arial", 9)).grid(row=1, column=0, sticky="w", pady=(5, 0))
+        self.max_velocity_var = tk.StringVar(value="8.0")
+        ttk.Entry(param_subframe, textvariable=self.max_velocity_var, width=8).grid(row=1, column=1, padx=5, pady=(5, 0), sticky="w")
+
+        ttk.Label(param_subframe, text="最大加速度 (rad/s²):", font=("Arial", 9)).grid(row=1, column=2, sticky="w", padx=(15, 0), pady=(5, 0))
+        self.max_acceleration_var = tk.StringVar(value="15.0")
+        ttk.Entry(param_subframe, textvariable=self.max_acceleration_var, width=8).grid(row=1, column=3, padx=5, pady=(5, 0), sticky="w")
+
+        # 分隔线
+        ttk.Separator(position_frame, orient="horizontal").grid(row=2, column=0, columnspan=2, sticky="ew", pady=10)
+
         # 目标位置显示
-        ttk.Label(position_frame, text="目标位置:").grid(row=1, column=0, sticky="w")
+        ttk.Label(position_frame, text="目标位置:").grid(row=3, column=0, sticky="w")
         self.target_position_label = ttk.Label(position_frame, text="-- rad", font=("Arial", 10, "bold"))
-        self.target_position_label.grid(row=1, column=1, sticky="w", padx=10)
+        self.target_position_label.grid(row=3, column=1, sticky="w", padx=10)
 
         # 控制按钮
         button_frame = ttk.Frame(position_frame)
-        button_frame.grid(row=2, column=0, columnspan=2, pady=10)
+        button_frame.grid(row=4, column=0, columnspan=2, pady=10)
 
         self.move_neg_btn = tk.Button(
             button_frame,
@@ -256,7 +263,7 @@ class MotorControlGUI:
 
         # 运动状态显示
         self.motion_status_label = ttk.Label(position_frame, text="运动状态: 静止", foreground="gray")
-        self.motion_status_label.grid(row=3, column=0, columnspan=2, pady=(5, 0))
+        self.motion_status_label.grid(row=5, column=0, columnspan=2, pady=(5, 0))
 
         # ===== 力矩控制区 =====
         torque_frame = ttk.LabelFrame(self.root, text="力矩控制 (MIT模式 - 纯力矩输出)", padding=10)
