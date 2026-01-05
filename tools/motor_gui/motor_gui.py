@@ -167,11 +167,31 @@ class MotorControlGUI:
         control_frame = ttk.LabelFrame(self.root, text="电机控制", padding=10)
         control_frame.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
 
+        # 第一行：使能按钮和状态显示
         self.enable_btn = ttk.Button(control_frame, text="使能电机", command=self.toggle_enable, state="disabled")
         self.enable_btn.grid(row=0, column=0, padx=5)
 
         self.status_label = ttk.Label(control_frame, text="状态: 未连接", foreground="gray")
         self.status_label.grid(row=0, column=1, padx=20)
+
+        # 第二行：实用功能按钮
+        utility_frame = ttk.Frame(control_frame)
+        utility_frame.grid(row=1, column=0, columnspan=2, pady=(10, 0))
+
+        self.set_zero_btn = ttk.Button(utility_frame, text="设置零点", command=self.set_zero_position, state="disabled", width=12)
+        self.set_zero_btn.grid(row=0, column=0, padx=5)
+
+        self.clear_error_btn = ttk.Button(utility_frame, text="清除错误", command=self.clear_error, state="disabled", width=12)
+        self.clear_error_btn.grid(row=0, column=1, padx=5)
+
+        self.save_position_btn = ttk.Button(utility_frame, text="保存当前位置", command=self.save_current_position, state="disabled", width=12)
+        self.save_position_btn.grid(row=0, column=2, padx=5)
+
+        self.goto_saved_btn = ttk.Button(utility_frame, text="回到保存位置", command=self.goto_saved_position, state="disabled", width=12)
+        self.goto_saved_btn.grid(row=0, column=3, padx=5)
+
+        # 保存的位置变量
+        self.saved_position = None
 
         # ===== 位置控制区 =====
         position_frame = ttk.LabelFrame(self.root, text="位置控制 (MIT模式 - 梯形加减速)", padding=10)
@@ -315,6 +335,10 @@ class MotorControlGUI:
                 self.enable_btn.config(state="normal")
                 self.status_label.config(text=f"状态: 已连接 ({motor_type_str})", foreground="green")
 
+                # 启用实用功能按钮（连接后可用）
+                self.set_zero_btn.config(state="normal")
+                self.clear_error_btn.config(state="normal")
+
                 # 禁用配置修改
                 config_vars = [self.port_var, self.baudrate_var, self.motor_id_var, self.master_id_var, self.motor_type_var]
                 for widget_var in config_vars:
@@ -355,6 +379,12 @@ class MotorControlGUI:
             # 禁用移动按钮
             self.move_neg_btn.config(state="disabled")
             self.move_pos_btn.config(state="disabled")
+
+            # 禁用实用功能按钮
+            self.set_zero_btn.config(state="disabled")
+            self.clear_error_btn.config(state="disabled")
+            self.save_position_btn.config(state="disabled")
+            self.goto_saved_btn.config(state="disabled")
 
             # 恢复配置修改
             config_vars = [self.port_var, self.baudrate_var, self.motor_id_var, self.master_id_var, self.motor_type_var]
@@ -414,6 +444,13 @@ class MotorControlGUI:
             self.move_neg_btn.config(state="normal")
             self.move_pos_btn.config(state="normal")
 
+            # 启用位置保存按钮
+            self.save_position_btn.config(state="normal")
+
+            # 如果之前已经保存过位置，也启用回到保存位置按钮
+            if self.saved_position is not None:
+                self.goto_saved_btn.config(state="normal")
+
             messagebox.showinfo("成功", f"电机已使能\n当前位置: {current_pos:.3f} rad")
         else:
             # 失能
@@ -428,6 +465,142 @@ class MotorControlGUI:
             # 禁用移动按钮
             self.move_neg_btn.config(state="disabled")
             self.move_pos_btn.config(state="disabled")
+
+            # 禁用位置保存相关按钮
+            self.save_position_btn.config(state="disabled")
+            self.goto_saved_btn.config(state="disabled")
+
+    def set_zero_position(self):
+        """设置当前位置为零点"""
+        if not self.connected or not self.motor:
+            return
+
+        # 确认对话框
+        result = messagebox.askyesno(
+            "确认设置零点",
+            "警告：此操作将把当前位置设置为零点。\n"
+            "注意：对于双编码器电机（如DM-J4310-2EC），此命令无效。\n\n"
+            "是否继续？"
+        )
+
+        if result:
+            success = self.motor.set_zero()
+            if success:
+                messagebox.showinfo("成功", "零点设置命令已发送")
+            else:
+                messagebox.showerror("错误", "零点设置失败")
+
+    def clear_error(self):
+        """清除错误状态"""
+        if not self.connected or not self.motor:
+            return
+
+        # 检查是否有错误
+        state = self.motor.get_state()
+        if state.error.value == 0:
+            messagebox.showinfo("提示", "当前没有错误需要清除")
+            return
+
+        # 确认对话框
+        result = messagebox.askyesno(
+            "确认清除错误",
+            f"当前错误状态: {state.error.name}\n\n"
+            "清除错误将执行以下操作：\n"
+            "1. 失能电机\n"
+            "2. 等待1秒\n"
+            "3. 重新使能电机\n\n"
+            "是否继续？"
+        )
+
+        if result:
+            try:
+                # 如果正在运动，先停止
+                if self.motion_active:
+                    self.stop_motion()
+
+                # 失能电机
+                was_enabled = self.enabled
+                if was_enabled:
+                    self.motor.disable()
+                    self.enabled = False
+                    self.status_label.config(text="状态: 清除错误中...", foreground="orange")
+
+                # 等待1秒
+                time.sleep(1.0)
+
+                # 重新使能（如果之前是使能状态）
+                if was_enabled:
+                    self.motor.enable()
+
+                    # 等待接收到位置数据
+                    max_wait_time = 2.0
+                    start_wait = time.time()
+                    while self.motor.get_state().timestamp == 0.0:
+                        time.sleep(0.01)
+                        if time.time() - start_wait > max_wait_time:
+                            messagebox.showerror("错误", "未能接收到电机反馈数据")
+                            return
+
+                    self.enabled = True
+                    self.enable_btn.config(text="失能电机")
+                    self.status_label.config(text="状态: 已使能", foreground="blue")
+
+                    # 更新当前命令位置
+                    current_pos = self.motor.get_state().position
+                    self.current_cmd_position = current_pos
+
+                    messagebox.showinfo("成功", f"错误已清除，电机已重新使能\n当前位置: {current_pos:.3f} rad")
+                else:
+                    messagebox.showinfo("成功", "错误已清除")
+
+            except Exception as e:
+                messagebox.showerror("错误", f"清除错误失败: {e}")
+
+    def save_current_position(self):
+        """保存当前位置"""
+        if not self.enabled or not self.motor:
+            return
+
+        state = self.motor.get_state()
+        self.saved_position = state.position
+
+        angle_deg = self.saved_position * 180 / 3.14159
+        messagebox.showinfo(
+            "位置已保存",
+            f"当前位置已保存:\n"
+            f"{self.saved_position:.3f} rad ({angle_deg:.1f}°)"
+        )
+
+        # 启用"回到保存位置"按钮
+        if self.enabled:
+            self.goto_saved_btn.config(state="normal")
+
+    def goto_saved_position(self):
+        """回到保存的位置"""
+        if not self.enabled or not self.motor or self.saved_position is None:
+            return
+
+        # 如果当前正在运动，先停止
+        if self.motion_active:
+            self.stop_motion()
+            time.sleep(0.5)
+
+        # 设置目标位置为保存的位置
+        with self.target_position_lock:
+            self.target_position = self.saved_position
+
+        angle_deg = self.saved_position * 180 / 3.14159
+        self.target_position_label.config(text=f"{self.saved_position:.2f} rad ({angle_deg:.1f}°)")
+
+        # 获取当前位置作为起始点
+        self.current_cmd_position = self.motor.get_state().position
+        self.current_cmd_velocity = 0.0
+
+        # 启动运动控制线程
+        self.stop_motion_event.clear()
+        self.motion_active = True
+        self.motion_thread = threading.Thread(target=self._trapezoidal_motion_control, daemon=True)
+        self.motion_thread.start()
 
     def on_button_press(self, target_position):
         """按钮按下事件 - 开始向目标位置移动"""
