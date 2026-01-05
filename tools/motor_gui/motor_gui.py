@@ -284,7 +284,12 @@ class MotorControlGUI:
         # 错误状态
         ttk.Label(status_frame, text="错误状态:").grid(row=2, column=0, sticky="w", pady=(5, 0))
         self.error_label = ttk.Label(status_frame, text="--", foreground="green", font=("Arial", 9))
-        self.error_label.grid(row=2, column=1, columnspan=3, sticky="w", padx=10, pady=(5, 0))
+        self.error_label.grid(row=2, column=1, columnspan=2, sticky="w", padx=10, pady=(5, 0))
+
+        # 使能状态反馈
+        ttk.Label(status_frame, text="使能反馈:").grid(row=2, column=3, sticky="w", padx=(20, 0), pady=(5, 0))
+        self.enabled_feedback_label = ttk.Label(status_frame, text="--", foreground="gray", font=("Arial", 9))
+        self.enabled_feedback_label.grid(row=2, column=4, columnspan=2, sticky="w", padx=10, pady=(5, 0))
 
     def toggle_connection(self):
         """切换连接状态"""
@@ -422,18 +427,33 @@ class MotorControlGUI:
             # 使能
             self.motor.enable()
 
-            # 等待接收到位置数据
+            # 等待接收到使能状态反馈
             max_wait_time = 2.0
             start_wait = time.time()
-            while self.motor.get_state().timestamp == 0.0:
+            while True:
                 time.sleep(0.01)
+                state = self.motor.get_state()
+
+                # 检查是否超时
                 if time.time() - start_wait > max_wait_time:
-                    messagebox.showerror("错误", "未能接收到电机反馈数据")
-                    self.motor.disable()
+                    messagebox.showerror("错误", "未能接收到电机使能反馈")
+                    return
+
+                # 检查是否收到反馈（timestamp更新）
+                if state.timestamp == 0.0:
+                    continue
+
+                # 检查使能状态反馈
+                if state.enabled:
+                    # 使能成功
+                    break
+                elif state.error.value >= 0x8:
+                    # 发生错误
+                    messagebox.showerror("错误", f"电机使能失败，错误: {state.error.name}")
                     return
 
             # 获取当前位置
-            current_pos = self.motor.get_state().position
+            current_pos = state.position
             self.current_cmd_position = current_pos
 
             self.enabled = True
@@ -458,6 +478,23 @@ class MotorControlGUI:
             self.stop_motion()
 
             self.motor.disable()
+
+            # 等待失能状态反馈
+            max_wait_time = 2.0
+            start_wait = time.time()
+            while True:
+                time.sleep(0.01)
+                state = self.motor.get_state()
+
+                # 检查是否超时
+                if time.time() - start_wait > max_wait_time:
+                    # 超时也认为失能成功（容错处理）
+                    break
+
+                # 检查失能状态反馈
+                if not state.enabled:
+                    break
+
             self.enabled = False
             self.enable_btn.config(text="使能电机")
             self.status_label.config(text="状态: 已连接", foreground="green")
@@ -532,13 +569,29 @@ class MotorControlGUI:
                 if was_enabled:
                     self.motor.enable()
 
-                    # 等待接收到位置数据
+                    # 等待使能状态反馈
                     max_wait_time = 2.0
                     start_wait = time.time()
-                    while self.motor.get_state().timestamp == 0.0:
+                    while True:
                         time.sleep(0.01)
+                        state = self.motor.get_state()
+
+                        # 检查是否超时
                         if time.time() - start_wait > max_wait_time:
-                            messagebox.showerror("错误", "未能接收到电机反馈数据")
+                            messagebox.showerror("错误", "未能接收到电机使能反馈")
+                            return
+
+                        # 检查是否收到反馈（timestamp更新）
+                        if state.timestamp == 0.0:
+                            continue
+
+                        # 检查使能状态反馈
+                        if state.enabled:
+                            # 使能成功，错误已清除
+                            break
+                        elif state.error.value >= 0x8:
+                            # 仍然有错误
+                            messagebox.showerror("错误", f"错误清除失败，仍有错误: {state.error.name}")
                             return
 
                     self.enabled = True
@@ -546,7 +599,7 @@ class MotorControlGUI:
                     self.status_label.config(text="状态: 已使能", foreground="blue")
 
                     # 更新当前命令位置
-                    current_pos = self.motor.get_state().position
+                    current_pos = state.position
                     self.current_cmd_position = current_pos
 
                     messagebox.showinfo("成功", f"错误已清除，电机已重新使能\n当前位置: {current_pos:.3f} rad")
@@ -772,35 +825,54 @@ class MotorControlGUI:
     def update_status_loop(self):
         """状态更新循环"""
         while self.update_running:
-            if self.motor and self.enabled:
+            if self.motor and self.connected:
                 try:
                     state = self.motor.get_state()
 
-                    # 更新当前位置
-                    angle_deg = state.position * 180 / 3.14159
-                    self.current_pos_label.config(text=f"{state.position:.3f} rad ({angle_deg:.1f}°)")
+                    # 检查使能状态是否与界面状态不一致（可能被外部改变）
+                    if state.enabled != self.enabled and state.timestamp > 0:
+                        # 使能状态发生变化，同步界面
+                        self.enabled = state.enabled
+                        if self.enabled:
+                            self.enable_btn.config(text="失能电机")
+                            self.status_label.config(text="状态: 已使能", foreground="blue")
+                        else:
+                            self.enable_btn.config(text="使能电机")
+                            self.status_label.config(text="状态: 已连接", foreground="green")
 
-                    # 更新命令位置
-                    cmd_angle_deg = self.current_cmd_position * 180 / 3.14159
-                    self.cmd_position_label.config(text=f"{self.current_cmd_position:.3f} rad ({cmd_angle_deg:.1f}°)")
+                    # 只在使能时更新位置速度等数据
+                    if self.enabled:
+                        # 更新当前位置
+                        angle_deg = state.position * 180 / 3.14159
+                        self.current_pos_label.config(text=f"{state.position:.3f} rad ({angle_deg:.1f}°)")
 
-                    # 更新当前速度
-                    self.velocity_label.config(text=f"{state.velocity:.3f} rad/s")
+                        # 更新命令位置
+                        cmd_angle_deg = self.current_cmd_position * 180 / 3.14159
+                        self.cmd_position_label.config(text=f"{self.current_cmd_position:.3f} rad ({cmd_angle_deg:.1f}°)")
 
-                    # 更新命令速度
-                    self.cmd_velocity_label.config(text=f"{self.current_cmd_velocity:.3f} rad/s")
+                        # 更新当前速度
+                        self.velocity_label.config(text=f"{state.velocity:.3f} rad/s")
 
-                    # 更新扭矩
-                    self.torque_label.config(text=f"{state.torque:.3f} Nm")
+                        # 更新命令速度
+                        self.cmd_velocity_label.config(text=f"{self.current_cmd_velocity:.3f} rad/s")
 
-                    # 更新温度
-                    self.temp_label.config(text=f"{state.temperature_mos} °C")
+                        # 更新扭矩
+                        self.torque_label.config(text=f"{state.torque:.3f} Nm")
 
-                    # 更新错误状态
+                        # 更新温度
+                        self.temp_label.config(text=f"{state.temperature_mos} °C")
+
+                    # 更新错误状态（不论是否使能都显示）
                     if state.error.value == 0:
                         self.error_label.config(text="无错误", foreground="green")
                     else:
                         self.error_label.config(text=f"{state.error.name}", foreground="red")
+
+                    # 更新使能状态反馈
+                    if state.enabled:
+                        self.enabled_feedback_label.config(text="已使能", foreground="blue")
+                    else:
+                        self.enabled_feedback_label.config(text="未使能", foreground="gray")
 
                 except Exception as e:
                     print(f"状态更新错误: {e}")

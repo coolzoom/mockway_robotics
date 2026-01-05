@@ -41,6 +41,7 @@ class MotorMode(IntEnum):
 class MotorError(IntEnum):
     """电机错误类型"""
     NONE = 0
+    ENABLED = 0x1          # 使能状态（不是错误）
     OVERVOLTAGE = 0x8      # 过压
     UNDERVOLTAGE = 0x9     # 欠压
     OVERCURRENT = 0xA      # 过流
@@ -59,6 +60,7 @@ class MotorState:
     torque: float = 0.0        # 扭矩 (Nm)
     temperature_mos: int = 0   # MOS温度 (℃)
     temperature_rotor: int = 0 # 转子温度 (℃)
+    enabled: bool = False      # 使能状态（从反馈获取）
     error: MotorError = MotorError.NONE
     timestamp: float = 0.0     # 时间戳
 
@@ -465,6 +467,15 @@ class DMMotor:
         temp_mos = data[6]
         temp_rotor = data[7]
 
+        # 解析使能状态和错误状态
+        # ERR=1表示使能状态，ERR=0表示失能状态，ERR>=8表示错误
+        is_enabled = (error_code == 0x1)
+        actual_error = MotorError.NONE
+
+        if error_code >= 0x8:
+            # 实际错误
+            actual_error = MotorError(error_code) if error_code in MotorError._value2member_map_ else MotorError.NONE
+
         # 更新状态
         with self._state_lock:
             self.state.position = position
@@ -472,24 +483,32 @@ class DMMotor:
             self.state.torque = torque
             self.state.temperature_mos = temp_mos
             self.state.temperature_rotor = temp_rotor
-            self.state.error = MotorError(error_code) if error_code in MotorError._value2member_map_ else MotorError.NONE
+            self.state.enabled = is_enabled
+            self.state.error = actual_error
             self.state.timestamp = time.time()
+
+            # 更新内部使能状态标志
+            self._enabled = is_enabled
     
     def enable(self) -> bool:
         """使能电机"""
         result = self.can.send_can_frame(self.motor_id, self.CMD_ENABLE)
         if result:
-            self._enabled = True
-            print(f"电机 {self.motor_id} 已使能")
+            print(f"电机 {self.motor_id} 使能命令已发送")
+            # 注意：实际使能状态由电机反馈决定，会在_on_can_frame中更新
         return result
-    
+
     def disable(self) -> bool:
         """禁用电机"""
         result = self.can.send_can_frame(self.motor_id, self.CMD_DISABLE)
         if result:
-            self._enabled = False
-            print(f"电机 {self.motor_id} 已禁用")
+            print(f"电机 {self.motor_id} 失能命令已发送")
+            # 注意：实际使能状态由电机反馈决定，会在_on_can_frame中更新
         return result
+
+    def is_enabled(self) -> bool:
+        """获取电机使能状态（从反馈获取）"""
+        return self._enabled
     
     def set_zero(self) -> bool:
         """设置当前位置为零点（注意：双编码器电机此命令无效）"""
@@ -508,6 +527,7 @@ class DMMotor:
                 torque=self.state.torque,
                 temperature_mos=self.state.temperature_mos,
                 temperature_rotor=self.state.temperature_rotor,
+                enabled=self.state.enabled,
                 error=self.state.error,
                 timestamp=self.state.timestamp
             )
