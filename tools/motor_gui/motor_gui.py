@@ -31,14 +31,16 @@ class MotorControlGUI:
         self.enabled = False
         self.update_running = False
 
+        # 插补线程控制
+        self.interpolation_running = False
+        self.interpolation_thread = None
+
         # 运动控制变量
         self.motion_active = False
-        self.motion_thread = None
-        self.stop_motion_event = threading.Event()
         self.target_position = 0.0
         self.current_cmd_position = 0.0
         self.current_cmd_velocity = 0.0
-        self.target_position_lock = threading.Lock()
+        self.control_lock = threading.Lock()  # 保护命令位置和速度
 
         # 创建界面
         self.create_widgets()
@@ -335,6 +337,36 @@ class MotorControlGUI:
                     motor_type=motor_type
                 )
 
+                # 等待100ms让通信稳定
+                time.sleep(0.1)
+
+                # 发送清除错误命令
+                self.motor.clear_error()
+                self.status_label.config(text="状态: 等待电机反馈...", foreground="orange")
+
+                # 等待接收到至少一次反馈帧
+                max_wait_time = 3.0
+                start_wait = time.time()
+                received_feedback = False
+
+                while time.time() - start_wait < max_wait_time:
+                    time.sleep(0.01)
+                    state = self.motor.get_state()
+                    if state.timestamp > 0:
+                        received_feedback = True
+                        # 用反馈位置更新命令位置
+                        with self.control_lock:
+                            self.current_cmd_position = state.position
+                            self.current_cmd_velocity = 0.0
+                        break
+
+                if not received_feedback:
+                    messagebox.showerror("错误", "未能接收到电机反馈数据，请检查连接和电机ID配置")
+                    self.can_adapter.close()
+                    self.can_adapter = None
+                    self.motor = None
+                    return
+
                 self.connected = True
                 self.connect_btn.config(text="断开")
                 self.enable_btn.config(state="normal")
@@ -353,7 +385,12 @@ class MotorControlGUI:
                 # 禁用刷新按钮
                 self.refresh_btn.config(state="disabled")
 
-                messagebox.showinfo("成功", f"已连接到电机\n型号: {motor_type_str}\nID: {motor_id}")
+                # 启动插补线程
+                self.interpolation_running = True
+                self.interpolation_thread = threading.Thread(target=self._interpolation_loop, daemon=True)
+                self.interpolation_thread.start()
+
+                messagebox.showinfo("成功", f"已连接到电机\n型号: {motor_type_str}\nID: {motor_id}\n当前位置: {state.position:.3f} rad")
 
             except Exception as e:
                 messagebox.showerror("错误", f"连接失败: {e}")
@@ -364,7 +401,12 @@ class MotorControlGUI:
         else:
             # 断开
             # 停止运动
-            self.stop_motion()
+            self.motion_active = False
+
+            # 停止插补线程
+            self.interpolation_running = False
+            if self.interpolation_thread and self.interpolation_thread.is_alive():
+                self.interpolation_thread.join(timeout=1.0)
 
             if self.enabled:
                 self.motor.disable()
@@ -424,6 +466,12 @@ class MotorControlGUI:
             return
 
         if not self.enabled:
+            # 使能前，用反馈位置更新命令位置
+            state = self.motor.get_state()
+            with self.control_lock:
+                self.current_cmd_position = state.position
+                self.current_cmd_velocity = 0.0
+
             # 使能
             self.motor.enable()
 
@@ -452,10 +500,6 @@ class MotorControlGUI:
                     messagebox.showerror("错误", f"电机使能失败，错误: {state.error.name}")
                     return
 
-            # 获取当前位置
-            current_pos = state.position
-            self.current_cmd_position = current_pos
-
             self.enabled = True
             self.enable_btn.config(text="失能电机")
             self.status_label.config(text="状态: 已使能", foreground="blue")
@@ -471,11 +515,11 @@ class MotorControlGUI:
             if self.saved_position is not None:
                 self.goto_saved_btn.config(state="normal")
 
-            messagebox.showinfo("成功", f"电机已使能\n当前位置: {current_pos:.3f} rad")
+            messagebox.showinfo("成功", f"电机已使能\n当前位置: {state.position:.3f} rad")
         else:
             # 失能
-            # 先停止运动
-            self.stop_motion()
+            # 停止运动
+            self.motion_active = False
 
             self.motor.disable()
 
@@ -548,8 +592,7 @@ class MotorControlGUI:
         if result:
             try:
                 # 如果正在运动，先停止
-                if self.motion_active:
-                    self.stop_motion()
+                self.motion_active = False
 
                 # 发送清除错误命令
                 success = self.motor.clear_error()
@@ -608,51 +651,26 @@ class MotorControlGUI:
         if not self.enabled or not self.motor or self.saved_position is None:
             return
 
-        # 如果当前正在运动，先停止
-        if self.motion_active:
-            self.stop_motion()
-            time.sleep(0.5)
-
-        # 设置目标位置为保存的位置
-        with self.target_position_lock:
+        # 设置目标位置为保存的位置，启动运动
+        with self.control_lock:
             self.target_position = self.saved_position
+            self.motion_active = True
 
         angle_deg = self.saved_position * 180 / 3.14159
         self.target_position_label.config(text=f"{self.saved_position:.2f} rad ({angle_deg:.1f}°)")
-
-        # 获取当前位置作为起始点
-        self.current_cmd_position = self.motor.get_state().position
-        self.current_cmd_velocity = 0.0
-
-        # 启动运动控制线程
-        self.stop_motion_event.clear()
-        self.motion_active = True
-        self.motion_thread = threading.Thread(target=self._trapezoidal_motion_control, daemon=True)
-        self.motion_thread.start()
 
     def on_button_press(self, target_position):
         """按钮按下事件 - 开始向目标位置移动"""
         if not self.enabled or not self.motor:
             return
 
-        # 设置目标位置
-        with self.target_position_lock:
+        # 设置目标位置，启动运动
+        with self.control_lock:
             self.target_position = target_position
+            self.motion_active = True
 
         angle_deg = target_position * 180 / 3.14159
         self.target_position_label.config(text=f"{target_position:.2f} rad ({angle_deg:.1f}°)")
-
-        # 如果还没有运动控制线程，启动它
-        if not self.motion_active:
-            # 获取当前位置作为起始点
-            self.current_cmd_position = self.motor.get_state().position
-            self.current_cmd_velocity = 0.0
-
-            # 启动运动控制线程
-            self.stop_motion_event.clear()
-            self.motion_active = True
-            self.motion_thread = threading.Thread(target=self._trapezoidal_motion_control, daemon=True)
-            self.motion_thread.start()
 
     def on_button_release(self):
         """按钮松开事件 - 开始减速停止"""
@@ -664,128 +682,118 @@ class MotorControlGUI:
         except ValueError:
             max_acceleration = 15.0
 
-        # 计算减速距离：基于当前速度和加速度
-        # 使用公式：s = v^2 / (2*a)
-        decel_distance = (self.current_cmd_velocity ** 2) / (2 * max_acceleration)
+        with self.control_lock:
+            # 计算减速距离：基于当前速度和加速度
+            # 使用公式：s = v^2 / (2*a)
+            decel_distance = (self.current_cmd_velocity ** 2) / (2 * max_acceleration)
 
-        # 根据当前速度方向，计算减速停止点
-        if self.current_cmd_velocity > 0.01:
-            # 正向运动，停止点在当前位置前方
-            stop_position = self.current_cmd_position + decel_distance
-        elif self.current_cmd_velocity < -0.01:
-            # 反向运动，停止点在当前位置后方
-            stop_position = self.current_cmd_position - decel_distance
-        else:
-            # 速度很小，直接停在当前位置
-            stop_position = self.current_cmd_position
+            # 根据当前速度方向，计算减速停止点
+            if self.current_cmd_velocity > 0.01:
+                # 正向运动，停止点在当前位置前方
+                stop_position = self.current_cmd_position + decel_distance
+            elif self.current_cmd_velocity < -0.01:
+                # 反向运动，停止点在当前位置后方
+                stop_position = self.current_cmd_position - decel_distance
+            else:
+                # 速度很小，直接停在当前位置
+                stop_position = self.current_cmd_position
 
-        # 将目标位置设置为减速停止点
-        with self.target_position_lock:
+            # 将目标位置设置为减速停止点
             self.target_position = stop_position
 
         angle_deg = stop_position * 180 / 3.14159
         self.target_position_label.config(text=f"{stop_position:.2f} rad ({angle_deg:.1f}°) [减速]")
 
-    def stop_motion(self):
-        """停止运动"""
-        if self.motion_active:
-            self.stop_motion_event.set()
-            if self.motion_thread and self.motion_thread.is_alive():
-                self.motion_thread.join(timeout=1.0)
-            self.motion_active = False
-
-            # 发送停止命令
-            if self.enabled and self.motor:
-                try:
-                    state = self.motor.get_state()
-                    kp = float(self.kp_var.get())
-                    kd = float(self.kd_var.get())
-                    self.motor.control_mit(
-                        p_des=state.position,
-                        v_des=0.0,
-                        kp=kp,
-                        kd=kd,
-                        t_ff=0.0
-                    )
-                except ValueError:
-                    pass
-
-            self.motion_status_label.config(text="运动状态: 静止", foreground="gray")
-
-    def _trapezoidal_motion_control(self):
-        """梯形加减速运动控制循环"""
-        try:
-            # 获取参数
-            kp = float(self.kp_var.get())
-            kd = float(self.kd_var.get())
-            max_velocity = float(self.max_velocity_var.get())
-            max_acceleration = float(self.max_acceleration_var.get())
-        except ValueError:
-            self.motion_active = False
-            messagebox.showerror("错误", "参数设置错误，请检查Kp、Kd、最大速度和最大加速度")
-            return
-
+    def _interpolation_loop(self):
+        """插补线程 - 持续发送MIT控制帧"""
         # 控制参数
         control_rate = 200  # Hz
         dt = 1.0 / control_rate
 
-        self.motion_status_label.config(text="运动状态: 运动中", foreground="blue")
+        print("插补线程已启动")
 
-        while not self.stop_motion_event.is_set():
+        while self.interpolation_running:
             start_time = time.time()
 
-            # 读取目标位置（线程安全）
-            with self.target_position_lock:
-                target_pos = self.target_position
+            try:
+                # 获取控制参数
+                kp = float(self.kp_var.get())
+                kd = float(self.kd_var.get())
+                max_velocity = float(self.max_velocity_var.get())
+                max_acceleration = float(self.max_acceleration_var.get())
+            except ValueError:
+                # 参数错误，使用默认值
+                kp = 40.0
+                kd = 1.0
+                max_velocity = 8.0
+                max_acceleration = 15.0
 
-            # 计算位置误差
-            position_error = target_pos - self.current_cmd_position
+            with self.control_lock:
+                # 未使能时：命令位置跟随反馈位置
+                if not self.enabled:
+                    state = self.motor.get_state()
+                    self.current_cmd_position = state.position
+                    self.current_cmd_velocity = 0.0
+                    self.motion_active = False
 
-            # 检查是否到达目标
-            if abs(position_error) < 0.001 and abs(self.current_cmd_velocity) < 0.01:
-                self.current_cmd_velocity = 0.0
-                print(f"到达目标位置: {target_pos:.4f} rad")
-                break
-
-            # 计算减速距离
-            decel_distance = (self.current_cmd_velocity ** 2) / (2 * max_acceleration)
-
-            # 判断运动方向
-            direction = 1 if position_error > 0 else -1
-
-            # 判断是否需要减速
-            if abs(position_error) <= decel_distance + 0.01:
-                # 减速阶段
-                if abs(self.current_cmd_velocity) > 0.01:
-                    self.current_cmd_velocity -= direction * max_acceleration * dt
-                    # 速度方向修正
-                    if direction > 0 and self.current_cmd_velocity < 0:
-                        self.current_cmd_velocity = 0
-                    elif direction < 0 and self.current_cmd_velocity > 0:
-                        self.current_cmd_velocity = 0
-                self.motion_status_label.config(text="运动状态: 减速中", foreground="orange")
-            else:
-                # 加速或匀速阶段
-                if abs(self.current_cmd_velocity) < max_velocity:
-                    self.current_cmd_velocity += direction * max_acceleration * dt
-                    # 限制最大速度
-                    if abs(self.current_cmd_velocity) > max_velocity:
-                        self.current_cmd_velocity = direction * max_velocity
-                    self.motion_status_label.config(text="运动状态: 加速中", foreground="green")
+                # 使能后：根据运动状态计算命令位置和速度
                 else:
-                    self.motion_status_label.config(text="运动状态: 匀速中", foreground="blue")
+                    if self.motion_active:
+                        # 运动模式：梯形加减速控制
+                        target_pos = self.target_position
 
-            # 更新命令位置
-            self.current_cmd_position += self.current_cmd_velocity * dt
+                        # 计算位置误差
+                        position_error = target_pos - self.current_cmd_position
 
-            # 发送MIT控制命令
-            self.motor.control_mit(
-                p_des=self.current_cmd_position,
-                v_des=self.current_cmd_velocity,
-                kp=kp,
-                kd=kd,
-                t_ff=0.0
-            )
+                        # 检查是否到达目标
+                        if abs(position_error) < 0.001 and abs(self.current_cmd_velocity) < 0.01:
+                            self.current_cmd_velocity = 0.0
+                            self.motion_active = False
+                            self.motion_status_label.config(text="运动状态: 静止", foreground="gray")
+                            print(f"到达目标位置: {target_pos:.4f} rad")
+                        else:
+                            # 计算减速距离
+                            decel_distance = (self.current_cmd_velocity ** 2) / (2 * max_acceleration)
+
+                            # 判断运动方向
+                            direction = 1 if position_error > 0 else -1
+
+                            # 判断是否需要减速
+                            if abs(position_error) <= decel_distance + 0.01:
+                                # 减速阶段
+                                if abs(self.current_cmd_velocity) > 0.01:
+                                    self.current_cmd_velocity -= direction * max_acceleration * dt
+                                    # 速度方向修正
+                                    if direction > 0 and self.current_cmd_velocity < 0:
+                                        self.current_cmd_velocity = 0
+                                    elif direction < 0 and self.current_cmd_velocity > 0:
+                                        self.current_cmd_velocity = 0
+                                self.motion_status_label.config(text="运动状态: 减速中", foreground="orange")
+                            else:
+                                # 加速或匀速阶段
+                                if abs(self.current_cmd_velocity) < max_velocity:
+                                    self.current_cmd_velocity += direction * max_acceleration * dt
+                                    # 限制最大速度
+                                    if abs(self.current_cmd_velocity) > max_velocity:
+                                        self.current_cmd_velocity = direction * max_velocity
+                                    self.motion_status_label.config(text="运动状态: 加速中", foreground="green")
+                                else:
+                                    self.motion_status_label.config(text="运动状态: 匀速中", foreground="blue")
+
+                            # 更新命令位置
+                            self.current_cmd_position += self.current_cmd_velocity * dt
+                    else:
+                        # 非运动模式：保持当前位置
+                        self.current_cmd_velocity = 0.0
+
+                # 发送MIT控制命令
+                self.motor.control_mit(
+                    p_des=self.current_cmd_position,
+                    v_des=self.current_cmd_velocity,
+                    kp=kp,
+                    kd=kd,
+                    t_ff=0.0
+                )
 
             # 控制周期
             elapsed = time.time() - start_time
@@ -793,9 +801,7 @@ class MotorControlGUI:
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
-        # 运动结束
-        self.motion_active = False
-        self.motion_status_label.config(text="运动状态: 静止", foreground="gray")
+        print("插补线程已停止")
 
     def update_status_loop(self):
         """状态更新循环"""
@@ -821,15 +827,19 @@ class MotorControlGUI:
                         angle_deg = state.position * 180 / 3.14159
                         self.current_pos_label.config(text=f"{state.position:.3f} rad ({angle_deg:.1f}°)")
 
-                        # 更新命令位置
-                        cmd_angle_deg = self.current_cmd_position * 180 / 3.14159
-                        self.cmd_position_label.config(text=f"{self.current_cmd_position:.3f} rad ({cmd_angle_deg:.1f}°)")
+                        # 更新命令位置和速度（线程安全）
+                        with self.control_lock:
+                            cmd_pos = self.current_cmd_position
+                            cmd_vel = self.current_cmd_velocity
+
+                        cmd_angle_deg = cmd_pos * 180 / 3.14159
+                        self.cmd_position_label.config(text=f"{cmd_pos:.3f} rad ({cmd_angle_deg:.1f}°)")
 
                         # 更新当前速度
                         self.velocity_label.config(text=f"{state.velocity:.3f} rad/s")
 
                         # 更新命令速度
-                        self.cmd_velocity_label.config(text=f"{self.current_cmd_velocity:.3f} rad/s")
+                        self.cmd_velocity_label.config(text=f"{cmd_vel:.3f} rad/s")
 
                         # 更新扭矩
                         self.torque_label.config(text=f"{state.torque:.3f} Nm")
@@ -858,8 +868,10 @@ class MotorControlGUI:
         """关闭窗口时的处理"""
         self.update_running = False
 
-        # 停止运动
-        self.stop_motion()
+        # 停止插补线程
+        self.interpolation_running = False
+        if self.interpolation_thread and self.interpolation_thread.is_alive():
+            self.interpolation_thread.join(timeout=1.0)
 
         if self.enabled and self.motor:
             self.motor.disable()
