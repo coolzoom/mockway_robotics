@@ -22,7 +22,7 @@ class MotorControlGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("达妙电机控制界面")
-        self.root.geometry("1200x700")
+        self.root.geometry("1200x850")
 
         # 变量
         self.can_adapter = None
@@ -921,7 +921,14 @@ class MotorControlGUI:
 
             # 使能后：根据运动状态计算命令位置和速度
             else:
-                if motion_active:
+                # 力矩控制模式：命令位置和速度跟随反馈值
+                if torque_control_active:
+                    state = self.motor.get_state()
+                    new_cmd_pos = state.position
+                    new_cmd_vel = state.velocity
+                    new_motion_active = False
+                    motion_status = "idle"
+                elif motion_active:
                     # 运动模式：梯形加减速控制
                     # 计算位置误差
                     position_error = target_pos - cmd_pos
