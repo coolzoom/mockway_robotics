@@ -7,6 +7,10 @@ local flank = require('flank')
 -- local tail = require('tail')
 local config = require('config')
 
+
+local motor4310 = cylinder.new(config.r_motor * 1e-3, 45 * 1e-3):color('black')
+local motor4340 = cylinder.new(config.r_motor * 1e-3, 52.25 * 1e-3):color('black')
+
 local m_joint = shell.m:copy()
 -- m_joint:fuse(lid.m:copy():z((config.h_shell + 1e-3) * 1e-3))
 local m_joint_flank = m_joint:copy()
