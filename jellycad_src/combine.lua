@@ -36,7 +36,7 @@ local shoulder = {}
 local m_base = base.m:copy():mass(78 * 1e-3)
 local m_flank = flank.m:copy():mass((12 + 4 + 3) * 1e-3)
 local m_shell = shell.m:copy():mass((55 + 2) * 1e-3)
-local m1_linkage = linkage.m1:copy():mass((55 + 2) * 1e-3)
+local m1_linkage = linkage.m1:copy():mass((70.5 + 10) * 1e-3)
 
 base_link[1] = m_base:copy()
 base_link[2] = m_flank:copy():z((config.h_base - config.h_flank) * 1e-3)
