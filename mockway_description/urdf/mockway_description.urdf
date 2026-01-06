@@ -1,0 +1,89 @@
+<?xml version="1.0"?>
+<robot name="mockway_description">
+
+  <link name="base_link">
+    <inertial>
+      <mass value="0.097"/>
+      <origin xyz="0.000 -0.000 0.015" rpy="0 0 0"/>
+      <inertia ixx="0.000048" iyy="0.000048" izz="0.000078" ixy="0.000000" ixz="-0.000000" iyz="0.000000"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://mockway_description/meshes/base_link.stl"/>
+      </geometry>
+      <material name="">
+        <color rgba="0.127 0.301 0.847 1.000"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://mockway_description/meshes/base_link.stl"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="joint1" type="revolute">
+    <parent link="base_link"/>
+    <child link="link1"/>
+    <origin xyz="0.000 0.000 0.064" rpy="0.000 -0.000 0.000"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.280" upper="6.280" effort="9.000" velocity="3.140"/>
+  </joint>
+
+  <link name="link1">
+    <inertial>
+      <mass value="0.371"/>
+      <origin xyz="0.000 -0.003 -0.005" rpy="0 0 0"/>
+      <inertia ixx="0.000183" iyy="0.000164" izz="0.000200" ixy="0.000000" ixz="-0.000000" iyz="0.000005"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://mockway_description/meshes/link1.stl"/>
+      </geometry>
+      <material name="">
+        <color rgba="0.231 0.162 1.000 1.000"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://mockway_description/meshes/link1.stl"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="joint2" type="revolute">
+    <parent link="link1"/>
+    <child link="link2"/>
+    <origin xyz="0.000 0.000 0.000" rpy="1.571 -0.000 0.000"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.280" upper="6.280" effort="9.000" velocity="3.140"/>
+  </joint>
+
+  <link name="link2">
+    <inertial>
+      <mass value="0.915"/>
+      <origin xyz="-0.000 0.082 0.068" rpy="0 0 0"/>
+      <inertia ixx="0.005981" iyy="0.000441" izz="0.005980" ixy="-0.000000" ixz="0.000000" iyz="0.000000"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://mockway_description/meshes/link2.stl"/>
+      </geometry>
+      <material name="">
+        <color rgba="0.610 0.235 0.000 1.000"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://mockway_description/meshes/link2.stl"/>
+      </geometry>
+    </collision>
+  </link>
+
+</robot>
