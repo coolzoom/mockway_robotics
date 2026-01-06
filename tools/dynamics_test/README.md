@@ -1,0 +1,202 @@
+# Mockway Robot - Inverse Dynamics Testing
+
+基于 Pinocchio 库实现的 Mockway 机器人动力学逆解测试工程。
+
+## 概述
+
+本测试工程使用 Pinocchio（一个高效的刚体动力学库）来计算 Mockway 机器人的逆向动力学。
+
+**逆向动力学（Inverse Dynamics）**：给定关节的位置、速度和加速度，计算所需的关节力矩。
+
+数学表达式：
+```
+τ = M(q)·a + C(q,v)·v + g(q)
+```
+
+其中：
+- `τ`: 关节力矩
+- `M(q)`: 质量矩阵（惯性矩阵）
+- `C(q,v)`: 科里奥利和离心力矩阵
+- `g(q)`: 重力项
+- `q`: 关节位置
+- `v`: 关节速度
+- `a`: 关节加速度
+
+## 功能特性
+
+本测试程序实现了以下功能：
+
+1. **静态配置测试**：计算多个静态姿态下的重力补偿力矩
+2. **轨迹跟踪测试**：沿正弦轨迹计算所需力矩并可视化
+3. **动力学分解测试**：验证 M、C、g 各项的正确性
+4. **可视化输出**：生成位置、速度、加速度和力矩的时间曲线图
+
+## 安装依赖
+
+### 方法 1：使用 pip 安装
+
+```bash
+cd tools/dynamics_test
+pip install -r requirements.txt
+```
+
+### 方法 2：使用 conda 安装
+
+```bash
+# 创建新环境（推荐）
+conda create -n mockway_dynamics python=3.8
+conda activate mockway_dynamics
+
+# 安装 Pinocchio
+conda install pinocchio -c conda-forge
+
+# 安装其他依赖
+pip install numpy matplotlib
+```
+
+### 依赖说明
+
+- **pin** (Pinocchio >=3.0.0): 刚体动力学计算库
+- **numpy** (>=1.20.0): 数值计算
+- **matplotlib** (>=3.3.0): 数据可视化
+
+## 使用方法
+
+### 运行完整测试
+
+```bash
+cd tools/dynamics_test
+python inverse_dynamics_test.py
+```
+
+这将运行所有三个测试：
+1. 静态配置测试
+2. 动力学分解测试
+3. 轨迹跟踪测试（并生成可视化图表）
+
+### 输出示例
+
+```
+============================================================
+Mockway Robot - Inverse Dynamics Testing with Pinocchio
+============================================================
+
+Model loaded: mockway_description
+Number of joints: 2
+Joint names: ['joint1', 'joint2']
+
+============================================================
+TEST 1: Static Configurations (Zero Velocity & Acceleration)
+============================================================
+
+Zero position:
+  Joint positions: [0. 0.] deg
+  Required torques: [0. 0.] Nm
+  Gravity torques:  [0. 0.] Nm
+
+Joint1 = 45°:
+  Joint positions: [45. 0.] deg
+  Required torques: [0.123 0.456] Nm
+  Gravity torques:  [0.123 0.456] Nm
+
+...
+```
+
+## 代码结构
+
+```
+dynamics_test/
+├── inverse_dynamics_test.py    # 主测试程序
+├── requirements.txt            # Python 依赖
+├── README.md                   # 本文档
+└── trajectory_results.png      # 生成的可视化结果（运行后生成）
+```
+
+## 核心 API
+
+### MockwayDynamics 类
+
+```python
+class MockwayDynamics:
+    def __init__(self, urdf_path)
+    def compute_inverse_dynamics(self, q, v, a) -> tau
+    def compute_mass_matrix(self, q) -> M
+    def compute_coriolis(self, q, v) -> c
+    def compute_gravity(self, q) -> g
+    def get_end_effector_pose(self, q) -> (position, orientation)
+```
+
+### 使用示例
+
+```python
+from inverse_dynamics_test import MockwayDynamics
+import numpy as np
+
+# 初始化
+dynamics = MockwayDynamics("path/to/mockway_description.urdf")
+
+# 定义关节状态
+q = np.array([0.5, 0.3])      # 位置 [rad]
+v = np.array([0.1, -0.2])     # 速度 [rad/s]
+a = np.array([1.0, 0.5])      # 加速度 [rad/s²]
+
+# 计算所需力矩
+tau = dynamics.compute_inverse_dynamics(q, v, a)
+print(f"Required torques: {tau} Nm")
+
+# 分别计算各项
+M = dynamics.compute_mass_matrix(q)
+c = dynamics.compute_coriolis(q, v)
+g = dynamics.compute_gravity(q)
+```
+
+## 测试说明
+
+### Test 1: 静态配置测试
+
+测试在不同关节位置下的静态平衡（零速度、零加速度）。在此情况下，所需力矩应等于重力补偿力矩。
+
+### Test 2: 动力学分解测试
+
+验证逆动力学的正确性，通过对比：
+- RNEA 算法（递归牛顿-欧拉算法）的结果
+- 手动计算 M·a + C·v + g 的结果
+
+两者应该一致。
+
+### Test 3: 轨迹跟踪测试
+
+沿正弦轨迹运动，计算每个时刻所需的关节力矩，并生成可视化图表：
+- 关节位置曲线
+- 关节速度曲线
+- 关节加速度曲线
+- 所需关节力矩曲线
+
+## 参考资料
+
+### Pinocchio 文档
+- 官方网站: https://stack-of-tasks.github.io/pinocchio/
+- GitHub: https://github.com/stack-of-tasks/pinocchio
+- 教程: https://gepettoweb.laas.fr/doc/stack-of-tasks/pinocchio/master/doxygen-html/
+
+### 逆向动力学相关
+- [Rigid Body Dynamics Algorithms](https://link.springer.com/book/10.1007/978-1-4899-7560-7) by Roy Featherstone
+- [Modern Robotics](http://hades.mech.northwestern.edu/index.php/Modern_Robotics) by Kevin M. Lynch and Frank C. Park
+
+## 常见问题
+
+**Q: 为什么在静态配置下力矩不为零？**
+
+A: 即使机器人静止，重力仍会产生力矩。逆动力学计算的是维持给定状态所需的力矩，包括重力补偿。
+
+**Q: 如何修改测试轨迹？**
+
+A: 在 `test_trajectory_tracking()` 函数中修改 `amplitude` 和 `frequency` 参数即可。
+
+**Q: 可以用于其他机器人吗？**
+
+A: 可以，只需将 URDF 文件路径改为你的机器人模型即可。确保 URDF 包含正确的惯性参数。
+
+## 许可
+
+本测试工程遵循项目整体许可协议。
