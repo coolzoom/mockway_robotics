@@ -4,6 +4,7 @@ local shell = require('shell')
 local flank = require('flank')
 -- local elbow = require('elbow')
 -- local tail = require('tail')
+local linkage = require('linkage')
 local config = require('config')
 
 
@@ -59,13 +60,8 @@ upperarm[4] = motor4340:copy():rot(0, 90, -90)
     :y(-(config.r_outer + config.h_flank + config.h_flank_reserve + config.thickness) * 1e-3)
     :z((config.h_base + config.h_flank_reserve + 2 * config.r_outer + config.h_upper_arm + config.h_flank) * 1e-3):show()
 
-for _, arr in ipairs({ base_link, shoulder }) do
-    for _, value in ipairs(arr) do
-        value:show()
-    end
-end
 
-local linkage = require('linkage')
+
 upperarm[5] = linkage.m1:copy()
     :y(-(2 * config.r_outer + config.h_flank + config.h_flank_reserve) * 1e-3)
     :z((config.h_base + config.h_flank_reserve + 2 * config.r_outer) * 1e-3):show()
@@ -75,8 +71,11 @@ local d1 = (config.h_base + config.h_flank_reserve + config.r_outer) * 1e-3
 local joint_axes = {}
 joint_axes[1] = axes.new({ 0, 0, d1, 0, 0, 0 }, 0.1)
 joint_axes[2] = joint_axes[1]:copy():move({ 0, 0, 0, 90, 0, 0 })
-for i = 1, #joint_axes do
-    joint_axes[i]:show()
+
+for _, arr in ipairs({ joint_axes, base_link, shoulder, upperarm }) do
+    for _, value in ipairs(arr) do
+        value:show()
+    end
 end
 
 j1_limit = { lower = -6.28, upper = 6.28, velocity = 3.14, effort = 9 }
@@ -90,3 +89,4 @@ joint1 = urdf:add(joint.new("joint1", joint_axes[1], "revolute", j1_limit))
 link1 = joint1:next(link.new("link1", shoulder))
 joint2 = link1:add(joint.new("joint2", joint_axes[2], "revolute", j2_limit))
 link2 = joint2:next(link.new("link2", upperarm))
+urdf:export({ name = 'mockway_description', path = '../', ros_version = 2 })
