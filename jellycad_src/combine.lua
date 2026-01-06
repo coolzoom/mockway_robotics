@@ -7,8 +7,8 @@ local flank = require('flank')
 local config = require('config')
 
 
-local motor4310 = cylinder.new(config.r_motor * 1e-3, 45 * 1e-3):color('black')
-local motor4340 = cylinder.new(config.r_motor * 1e-3, 52.25 * 1e-3):color('black')
+local motor4310 = cylinder.new(config.r_motor * 1e-3, 45 * 1e-3):color('black'):mass(0.295)
+local motor4340 = cylinder.new(config.r_motor * 1e-3, 52.25 * 1e-3):color('black'):mass(0.36)
 --[[
 local m_joint = shell.m:copy()
 -- m_joint:fuse(lid.m:copy():z((config.h_shell + 1e-3) * 1e-3))
@@ -69,3 +69,24 @@ local linkage = require('linkage')
 upperarm[5] = linkage.m1:copy()
     :x((2 * config.r_outer + config.h_flank + config.h_flank_reserve) * 1e-3)
     :z((config.h_base + config.h_flank_reserve + 2 * config.r_outer) * 1e-3):show()
+
+local d1 = (config.h_base + config.h_flank_reserve + config.r_outer) * 1e-3
+
+local joint_axes = {}
+joint_axes[1] = axes.new({ 0, 0, d1, 0, 0, 0 }, 0.1)
+joint_axes[2] = joint_axes[1]:copy():move({ 0, 0, 0, 90, 0, 0 })
+for i = 1, #joint_axes do
+    joint_axes[i]:show()
+end
+
+j1_limit = { lower = -6.28, upper = 6.28, velocity = 3.14, effort = 9 }
+j2_limit = { lower = -6.28, upper = 6.28, velocity = 3.14, effort = 9 }
+j3_limit = { lower = -3.14, upper = 3.14, velocity = 3.14, effort = 9 }
+j4_limit = { lower = -6.28, upper = 6.28, velocity = 3.14, effort = 3 }
+j5_limit = { lower = -6.28, upper = 6.28, velocity = 3.14, effort = 3 }
+j6_limit = { lower = -6.28, upper = 6.28, velocity = 3.14, effort = 3 }
+urdf = link.new("base_link", base_link)
+joint1 = urdf:add(joint.new("joint1", joint_axes[1], "revolute", j1_limit))
+link1 = joint1:next(link.new("link1", shoulder))
+joint2 = link1:add(joint.new("joint2", joint_axes[2], "revolute", j2_limit))
+link2 = joint2:next(link.new("link2", upperarm))

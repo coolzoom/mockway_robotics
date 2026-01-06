@@ -12,8 +12,8 @@ base = cylinder.new(config.r_base_down, config.h_base)
 local elips = ellipse.new({ config.r_base_down, 0, config.h_base }, { 0, 1, 0 }, config.r1_ellip, config.r2_ellip)
 base:cut(face.new(elips):revol({ 0, 0, 0 }, { 0, 0, 1 }, 360))
 -- 圆角
-local edge_info = { type = 'bspline_curve', first = { 45, 0, 8 }, last = { 45, 0, 8 }, tol = 1e-3 }
-base:fillet(3, edge_info)
+-- local edge_info = { type = 'bspline_curve', first = { 45, 0, 8 }, last = { 45, 0, 8 }, tol = 1e-3 }
+-- base:fillet(3, edge_info)
 -- 切割法兰凹台
 base:cut(cylinder.new(config.r_flank_groove, config.h_flank):z(config.h_base - config.h_flank))
 -- 螺丝孔
