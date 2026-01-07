@@ -165,6 +165,44 @@ class RealtimeTorqueController:
         self._current_tau_cmd = np.zeros(self.num_motors)
         self._state_lock = threading.Lock()
 
+        # Velocity history for acceleration estimation
+        self._previous_v = np.zeros(self.num_motors)
+        self._filtered_a = np.zeros(self.num_motors)
+
+        # Low-pass filter parameter for acceleration (cutoff frequency in Hz)
+        self._accel_filter_cutoff = 5.0  # Hz
+        self._accel_filter_alpha = self._compute_filter_alpha(self._accel_filter_cutoff)
+
+    def _compute_filter_alpha(self, cutoff_freq):
+        """
+        Compute first-order low-pass filter coefficient
+
+        Args:
+            cutoff_freq: Cutoff frequency in Hz
+
+        Returns:
+            alpha: Filter coefficient (0 < alpha < 1)
+        """
+        # First-order IIR low-pass filter: y[n] = alpha * x[n] + (1-alpha) * y[n-1]
+        # Cutoff frequency relationship: alpha = 2*pi*dt*fc / (2*pi*dt*fc + 1)
+        rc = 1.0 / (2.0 * np.pi * cutoff_freq)
+        alpha = self.dt / (rc + self.dt)
+        return alpha
+
+    def _apply_lowpass_filter(self, new_value, filtered_value, alpha):
+        """
+        Apply first-order low-pass filter
+
+        Args:
+            new_value: New input value
+            filtered_value: Previous filtered value
+            alpha: Filter coefficient
+
+        Returns:
+            Filtered output
+        """
+        return alpha * new_value + (1.0 - alpha) * filtered_value
+
     def setup(self):
         """Setup CAN connection and motors"""
         print("\n" + "="*60)
@@ -268,10 +306,20 @@ class RealtimeTorqueController:
             # Gravity compensation only
             tau = self.dynamics.compute_gravity(q)
         elif mode == "full_dynamics":
-            # Full inverse dynamics (gravity + coriolis)
-            # Zero acceleration for compensation
-            a = np.zeros(self.num_motors)
-            tau = self.dynamics.compute_inverse_dynamics(q, v, a)
+            # Full inverse dynamics (gravity + coriolis + inertia)
+            # Compute acceleration from velocity differentiation
+            a_raw = (v - self._previous_v) / self.dt
+
+            # Apply low-pass filter to acceleration
+            for i in range(self.num_motors):
+                self._filtered_a[i] = self._apply_lowpass_filter(
+                    a_raw[i],
+                    self._filtered_a[i],
+                    self._accel_filter_alpha
+                )
+
+            # Use filtered acceleration in inverse dynamics
+            tau = self.dynamics.compute_inverse_dynamics(q, v, self._filtered_a)
         else:
             raise ValueError(f"Unknown compensation mode: {mode}")
 
@@ -321,6 +369,7 @@ class RealtimeTorqueController:
                 # Update internal state
                 with self._state_lock:
                     self._current_q = q
+                    self._previous_v = self._current_v.copy()  # Save previous velocity
                     self._current_v = v
                     self._current_tau_cmd = tau
 
