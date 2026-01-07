@@ -20,10 +20,17 @@ import numpy as np
 import pinocchio as pin
 from pathlib import Path
 import threading
+import argparse
 
 # Add motor driver to path
 sys.path.append(str(Path(__file__).parent.parent / "motor_gui"))
 from dm_motor_driver import WitMotionUSBCAN, DMMotor, MotorType, MotorState
+
+# Import configuration loader
+from config_loader import load_config, DynamicsTestConfig, get_default_config, print_config_summary
+
+# Default configuration file path
+DEFAULT_CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "dynamics_test.yaml"
 
 
 class MockwayDynamics:
@@ -97,14 +104,19 @@ class RealtimeTorqueController:
     Integrates Pinocchio dynamics with DM motor control
     """
 
-    def __init__(self, can_port='COM9', can_baudrate=1000000):
+    def __init__(self, config: DynamicsTestConfig = None):
         """
         Initialize the real-time controller
 
         Args:
-            can_port: CAN adapter serial port
-            can_baudrate: CAN bus baudrate
+            config: Configuration object (if None, use default config)
         """
+        # Load configuration
+        if config is None:
+            config = get_default_config()
+
+        self.config = config
+
         # Find URDF file
         workspace_dir = Path(__file__).parent.parent.parent
         urdf_path = workspace_dir / "mockway_description/urdf/mockway_description.urdf"
@@ -116,37 +128,41 @@ class RealtimeTorqueController:
         self.dynamics = MockwayDynamics(str(urdf_path))
 
         # Initialize CAN adapter
-        print(f"\n初始化CAN适配器: {can_port}, 波特率: {can_baudrate}")
+        print(f"\n初始化CAN适配器: {config.can_port}, 波特率: {config.can_baudrate}")
         self.can_adapter = WitMotionUSBCAN(
-            port=can_port,
-            baudrate=921600,  # Serial baudrate for USB-CAN adapter
-            can_baudrate=can_baudrate
+            port=config.can_port,
+            baudrate=config.can_serial_baudrate,  # Serial baudrate for USB-CAN adapter
+            can_baudrate=config.can_baudrate
         )
 
         # Motor instances (will be initialized in setup)
-        self.motor1 = None  # Joint 1: DM-J4310-2EC
-        self.motor2 = None  # Joint 2: DM4340
+        self.motors = []  # List[DMMotor] - dynamic list of motors
+        self.num_motors = len(config.motors)
 
         # Control parameters
-        self.control_rate = 200  # Hz
+        self.control_rate = config.control_rate  # Hz
         self.dt = 1.0 / self.control_rate
 
         # Control mode
-        self.compensation_mode = "gravity"  # "gravity", "full_dynamics", "none"
+        self.compensation_mode = config.compensation_mode  # "gravity", "full_dynamics", "none"
 
         # MIT control parameters
-        self.kp = 0.0  # Position gain (set to 0 for pure torque control)
-        self.kd = 1.0  # Damping gain
+        self.kp = config.kp  # Position gain (set to 0 for pure torque control)
+        self.kd = config.kd  # Damping gain
+
+        # Logging parameters
+        self.log_interval = config.log_interval
+        self.verbose = config.verbose
 
         # Control thread
         self._control_thread = None
         self._running = False
         self._stop_event = threading.Event()
 
-        # Current state
-        self._current_q = np.zeros(2)
-        self._current_v = np.zeros(2)
-        self._current_tau_cmd = np.zeros(2)
+        # Current state (dynamic size based on number of motors)
+        self._current_q = np.zeros(self.num_motors)
+        self._current_v = np.zeros(self.num_motors)
+        self._current_tau_cmd = np.zeros(self.num_motors)
         self._state_lock = threading.Lock()
 
     def setup(self):
@@ -161,45 +177,45 @@ class RealtimeTorqueController:
 
         time.sleep(0.5)
 
-        # Initialize motors
+        # Initialize motors dynamically from configuration
         print("\n初始化电机...")
 
-        # Joint 1: DM-J4310-2EC (ID=1)
-        self.motor1 = DMMotor(
-            can_adapter=self.can_adapter,
-            motor_id=1,
-            master_id=0,  # Feedback frame ID
-            motor_type=MotorType.DM_J4310_2EC
-        )
-
-        # Joint 2: DM4340 (ID=2)
-        self.motor2 = DMMotor(
-            can_adapter=self.can_adapter,
-            motor_id=2,
-            master_id=0,  # Feedback frame ID (same master for both)
-            motor_type=MotorType.DM4340
-        )
+        for motor_config in self.config.motors:
+            motor = DMMotor(
+                can_adapter=self.can_adapter,
+                motor_id=motor_config.motor_id,
+                master_id=motor_config.master_id,
+                motor_type=motor_config.motor_type
+            )
+            self.motors.append(motor)
+            print(f"  电机 {motor_config.motor_id} ({motor_config.description}): {motor_config.motor_type.name}")
 
         time.sleep(0.2)
-        print("\n电机初始化完成")
+        print(f"\n电机初始化完成，共 {len(self.motors)} 个电机")
 
     def enable_motors(self):
-        """Enable both motors"""
+        """Enable all motors"""
         print("\n使能电机...")
-        self.motor1.enable()
-        time.sleep(0.1)
-        self.motor2.enable()
+        for motor in self.motors:
+            motor.enable()
+            time.sleep(0.1)
         time.sleep(0.2)
 
         # Wait for feedback
         max_wait = 2.0
         start_time = time.time()
         while time.time() - start_time < max_wait:
-            state1 = self.motor1.get_state()
-            state2 = self.motor2.get_state()
-            if state1.timestamp > 0 and state2.timestamp > 0:
-                print(f"电机1位置: {state1.position:.4f} rad")
-                print(f"电机2位置: {state2.position:.4f} rad")
+            all_ready = True
+            for i, motor in enumerate(self.motors):
+                state = motor.get_state()
+                if state.timestamp <= 0:
+                    all_ready = False
+                    break
+
+            if all_ready:
+                for i, motor in enumerate(self.motors):
+                    state = motor.get_state()
+                    print(f"电机{i+1}位置: {state.position:.4f} rad")
                 break
             time.sleep(0.01)
         else:
@@ -208,12 +224,11 @@ class RealtimeTorqueController:
         print("电机已使能")
 
     def disable_motors(self):
-        """Disable both motors"""
+        """Disable all motors"""
         print("\n失能电机...")
-        if self.motor1:
-            self.motor1.disable()
-        if self.motor2:
-            self.motor2.disable()
+        for motor in self.motors:
+            if motor:
+                motor.disable()
         time.sleep(0.1)
         print("电机已失能")
 
@@ -222,14 +237,16 @@ class RealtimeTorqueController:
         Get current joint state from motors
 
         Returns:
-            q: Joint positions (2,)
-            v: Joint velocities (2,)
+            q: Joint positions (num_motors,)
+            v: Joint velocities (num_motors,)
         """
-        state1 = self.motor1.get_state()
-        state2 = self.motor2.get_state()
+        q = np.zeros(self.num_motors)
+        v = np.zeros(self.num_motors)
 
-        q = np.array([state1.position, state2.position])
-        v = np.array([state1.velocity, state2.velocity])
+        for i, motor in enumerate(self.motors):
+            state = motor.get_state()
+            q[i] = state.position
+            v[i] = state.velocity
 
         return q, v
 
@@ -238,22 +255,22 @@ class RealtimeTorqueController:
         Compute compensation torque based on mode
 
         Args:
-            q: Joint positions (2,)
-            v: Joint velocities (2,)
+            q: Joint positions (num_motors,)
+            v: Joint velocities (num_motors,)
             mode: Compensation mode ("gravity", "full_dynamics", "none")
 
         Returns:
-            tau: Compensation torque (2,)
+            tau: Compensation torque (num_motors,)
         """
         if mode == "none":
-            return np.zeros(2)
+            return np.zeros(self.num_motors)
         elif mode == "gravity":
             # Gravity compensation only
             tau = self.dynamics.compute_gravity(q)
         elif mode == "full_dynamics":
             # Full inverse dynamics (gravity + coriolis)
             # Zero acceleration for compensation
-            a = np.zeros(2)
+            a = np.zeros(self.num_motors)
             tau = self.dynamics.compute_inverse_dynamics(q, v, a)
         else:
             raise ValueError(f"Unknown compensation mode: {mode}")
@@ -265,28 +282,21 @@ class RealtimeTorqueController:
         Send torque commands to motors via MIT control mode
 
         Args:
-            tau: Joint torques (2,) in Nm
+            tau: Joint torques (num_motors,) in Nm
         """
         # Get current state for feedforward
         q, v = self.get_current_state()
 
-        # Send MIT control commands
+        # Send MIT control commands to all motors
         # Using kp=0, kd>0 for damping, and t_ff for torque command
-        self.motor1.control_mit(
-            p_des=q[0],  # Current position
-            v_des=0.0,   # Zero desired velocity
-            kp=self.kp,
-            kd=self.kd,
-            t_ff=tau[0]
-        )
-
-        self.motor2.control_mit(
-            p_des=q[1],
-            v_des=0.0,
-            kp=self.kp,
-            kd=self.kd,
-            t_ff=tau[1]
-        )
+        for i, motor in enumerate(self.motors):
+            motor.control_mit(
+                p_des=q[i],  # Current position
+                v_des=0.0,   # Zero desired velocity
+                kp=self.kp,
+                kd=self.kd,
+                t_ff=tau[i]
+            )
 
     def _control_loop(self):
         """Main control loop running at specified rate"""
@@ -314,12 +324,15 @@ class RealtimeTorqueController:
                     self._current_v = v
                     self._current_tau_cmd = tau
 
-                # Print status periodically (every 0.5 seconds)
+                # Print status periodically
                 loop_count += 1
-                if time.time() - last_print_time >= 0.5:
-                    print(f"\r位置: [{q[0]:6.3f}, {q[1]:6.3f}] rad  "
-                          f"速度: [{v[0]:6.3f}, {v[1]:6.3f}] rad/s  "
-                          f"力矩: [{tau[0]:6.3f}, {tau[1]:6.3f}] Nm", end='')
+                if time.time() - last_print_time >= self.log_interval:
+                    q_str = ', '.join([f"{qi:6.3f}" for qi in q])
+                    v_str = ', '.join([f"{vi:6.3f}" for vi in v])
+                    tau_str = ', '.join([f"{ti:6.3f}" for ti in tau])
+                    print(f"\r位置: [{q_str}] rad  "
+                          f"速度: [{v_str}] rad/s  "
+                          f"力矩: [{tau_str}] Nm", end='')
                     last_print_time = time.time()
 
             except Exception as e:
@@ -396,8 +409,81 @@ class RealtimeTorqueController:
         print("控制器已关闭")
 
 
-def demo_gravity_compensation():
+def parse_arguments():
+    """解析命令行参数"""
+    parser = argparse.ArgumentParser(
+        description="Mockway Robot - Real-time Torque Compensation Control",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例用法:
+  # 使用默认配置文件
+  python realtime_torque_compensation.py
+
+  # 指定配置文件
+  python realtime_torque_compensation.py --config /path/to/config.yaml
+
+  # 覆盖CAN端口
+  python realtime_torque_compensation.py --can-port COM3
+
+  # 覆盖补偿模式
+  python realtime_torque_compensation.py --mode full_dynamics
+
+  # 直接运行演示（跳过菜单）
+  python realtime_torque_compensation.py --demo gravity
+        """
+    )
+
+    parser.add_argument(
+        '--config', '-c',
+        type=str,
+        default=None,
+        help=f'配置文件路径 (默认: {DEFAULT_CONFIG_PATH})'
+    )
+
+    parser.add_argument(
+        '--can-port',
+        type=str,
+        default=None,
+        help='CAN适配器串口 (覆盖配置文件)'
+    )
+
+    parser.add_argument(
+        '--mode', '-m',
+        type=str,
+        choices=['gravity', 'full_dynamics', 'none'],
+        default=None,
+        help='补偿模式 (覆盖配置文件)'
+    )
+
+    parser.add_argument(
+        '--control-rate',
+        type=int,
+        default=None,
+        help='控制频率 Hz (覆盖配置文件)'
+    )
+
+    parser.add_argument(
+        '--demo',
+        type=str,
+        choices=['gravity', 'full_dynamics', 'comparison', 'interactive'],
+        default=None,
+        help='直接运行指定演示'
+    )
+
+    parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='详细输出模式'
+    )
+
+    return parser.parse_args()
+
+
+def demo_gravity_compensation(config=None):
     """Demonstrate gravity compensation"""
+    if config is None:
+        config = get_default_config()
+
     print("\n" + "="*60)
     print("演示: 重力补偿模式")
     print("="*60)
@@ -405,7 +491,7 @@ def demo_gravity_compensation():
     print("您可以手动移动机械臂，感受重力补偿效果")
     print("="*60)
 
-    controller = RealtimeTorqueController(can_port='COM9')
+    controller = RealtimeTorqueController(config)
 
     try:
         # Setup
@@ -427,15 +513,18 @@ def demo_gravity_compensation():
         controller.shutdown()
 
 
-def demo_full_dynamics_compensation():
+def demo_full_dynamics_compensation(config=None):
     """Demonstrate full dynamics compensation"""
+    if config is None:
+        config = get_default_config()
+
     print("\n" + "="*60)
     print("演示: 完整动力学补偿模式")
     print("="*60)
     print("补偿重力、科里奥利力和离心力")
     print("="*60)
 
-    controller = RealtimeTorqueController(can_port='COM9')
+    controller = RealtimeTorqueController(config)
 
     try:
         # Setup
@@ -457,13 +546,16 @@ def demo_full_dynamics_compensation():
         controller.shutdown()
 
 
-def demo_comparison():
+def demo_comparison(config=None):
     """Compare different compensation modes"""
+    if config is None:
+        config = get_default_config()
+
     print("\n" + "="*60)
     print("演示: 补偿模式对比")
     print("="*60)
 
-    controller = RealtimeTorqueController(can_port='COM9')
+    controller = RealtimeTorqueController(config)
 
     try:
         # Setup
@@ -500,13 +592,16 @@ def demo_comparison():
         controller.shutdown()
 
 
-def interactive_mode():
+def interactive_mode(config=None):
     """Interactive control mode"""
+    if config is None:
+        config = get_default_config()
+
     print("\n" + "="*60)
     print("Mockway机器人 - 实时力矩补偿控制")
     print("="*60)
 
-    controller = RealtimeTorqueController(can_port='COM9')
+    controller = RealtimeTorqueController(config)
 
     try:
         # Setup
@@ -580,31 +675,85 @@ def interactive_mode():
 
 def main():
     """Main function"""
-    print("\n" + "="*60)
-    print("Mockway机器人 - 实时力矩补偿系统")
-    print("="*60)
-    print("\n请选择演示模式:")
-    print("1. 重力补偿演示")
-    print("2. 完整动力学补偿演示")
-    print("3. 补偿模式对比")
-    print("4. 交互式控制")
-    print("0. 退出")
+    # Parse command line arguments
+    args = parse_arguments()
 
+    # Load configuration (priority: command line > config file > default)
     try:
-        choice = input("\n请输入选择 (0-4): ").strip()
-
-        if choice == '1':
-            demo_gravity_compensation()
-        elif choice == '2':
-            demo_full_dynamics_compensation()
-        elif choice == '3':
-            demo_comparison()
-        elif choice == '4':
-            interactive_mode()
-        elif choice == '0':
-            print("退出")
+        if args.config:
+            print(f"加载配置文件: {args.config}")
+            config = load_config(args.config)
         else:
-            print("无效选择")
+            config_path = DEFAULT_CONFIG_PATH
+            if config_path.exists():
+                print(f"使用默认配置文件: {config_path}")
+                config = load_config(str(config_path))
+            else:
+                print(f"配置文件不存在，使用内置默认配置")
+                config = get_default_config()
+
+        # Command line arguments override config file
+        if args.can_port:
+            config.can_port = args.can_port
+            print(f"CAN端口被命令行参数覆盖: {args.can_port}")
+
+        if args.mode:
+            config.compensation_mode = args.mode
+            print(f"补偿模式被命令行参数覆盖: {args.mode}")
+
+        if args.control_rate:
+            config.control_rate = args.control_rate
+            print(f"控制频率被命令行参数覆盖: {args.control_rate} Hz")
+
+        if args.verbose:
+            config.verbose = True
+
+        # Print configuration summary
+        print_config_summary(config)
+
+    except Exception as e:
+        print(f"配置加载失败: {e}")
+        print("使用内置默认配置")
+        config = get_default_config()
+
+    # Run demo or interactive mode based on arguments
+    try:
+        if args.demo:
+            # Direct demo mode (skip menu)
+            if args.demo == 'gravity':
+                demo_gravity_compensation(config)
+            elif args.demo == 'full_dynamics':
+                demo_full_dynamics_compensation(config)
+            elif args.demo == 'comparison':
+                demo_comparison(config)
+            elif args.demo == 'interactive':
+                interactive_mode(config)
+        else:
+            # Interactive menu mode
+            print("\n" + "="*60)
+            print("Mockway机器人 - 实时力矩补偿系统")
+            print("="*60)
+            print("\n请选择演示模式:")
+            print("1. 重力补偿演示")
+            print("2. 完整动力学补偿演示")
+            print("3. 补偿模式对比")
+            print("4. 交互式控制")
+            print("0. 退出")
+
+            choice = input("\n请输入选择 (0-4): ").strip()
+
+            if choice == '1':
+                demo_gravity_compensation(config)
+            elif choice == '2':
+                demo_full_dynamics_compensation(config)
+            elif choice == '3':
+                demo_comparison(config)
+            elif choice == '4':
+                interactive_mode(config)
+            elif choice == '0':
+                print("退出")
+            else:
+                print("无效选择")
 
     except KeyboardInterrupt:
         print("\n\n退出")
