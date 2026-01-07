@@ -105,7 +105,7 @@ def get_default_config() -> DynamicsTestConfig:
         control_rate=200,
         compensation_mode="gravity",
         kp=0.0,
-        kd=1.0,
+        kd=0.005,
         log_interval=0.5,
         verbose=False
     )
