@@ -378,9 +378,11 @@ class RealtimeTorqueController:
                 if time.time() - last_print_time >= self.log_interval:
                     q_str = ', '.join([f"{qi:6.3f}" for qi in q])
                     v_str = ', '.join([f"{vi:6.3f}" for vi in v])
+                    a_str = ', '.join([f"{ai:6.3f}" for ai in self._filtered_a])
                     tau_str = ', '.join([f"{ti:6.3f}" for ti in tau])
                     print(f"\r位置: [{q_str}] rad  "
                           f"速度: [{v_str}] rad/s  "
+                          f"加速度: [{a_str}] rad/s²  "
                           f"力矩: [{tau_str}] Nm", end='')
                     last_print_time = time.time()
 
@@ -436,6 +438,7 @@ class RealtimeTorqueController:
             return {
                 'q': self._current_q.copy(),
                 'v': self._current_v.copy(),
+                'a': self._filtered_a.copy(),
                 'tau': self._current_tau_cmd.copy()
             }
 
@@ -631,6 +634,7 @@ def demo_comparison(config=None):
             print(f"\n最终状态:")
             print(f"  位置: {state['q']} rad")
             print(f"  速度: {state['v']} rad/s")
+            print(f"  加速度: {state['a']} rad/s²")
             print(f"  力矩: {state['tau']} Nm")
 
             time.sleep(1.0)
@@ -691,22 +695,32 @@ def interactive_mode(config=None):
                 print(f"\n当前状态:")
                 print(f"  关节位置: {np.rad2deg(state['q'])} deg")
                 print(f"  关节速度: {state['v']} rad/s")
+                print(f"  关节加速度: {state['a']} rad/s²")
                 print(f"  补偿力矩: {state['tau']} Nm")
+                print(f"\n控制参数:")
                 print(f"  补偿模式: {controller.compensation_mode}")
                 print(f"  控制频率: {controller.control_rate} Hz")
+                print(f"  加速度滤波截止频率: {controller._accel_filter_cutoff} Hz")
+                print(f"  Kp: {controller.kp}, Kd: {controller.kd}")
 
             elif choice == '5':
                 print(f"\n当前参数:")
                 print(f"  Kp: {controller.kp}")
                 print(f"  Kd: {controller.kd}")
                 print(f"  控制频率: {controller.control_rate} Hz")
+                print(f"  加速度滤波截止频率: {controller._accel_filter_cutoff} Hz")
 
                 try:
-                    kp_new = float(input(f"输入新的Kp (当前: {controller.kp}): ").strip())
-                    kd_new = float(input(f"输入新的Kd (当前: {controller.kd}): ").strip())
+                    kp_new = float(input(f"输入新的Kp (当前: {controller.kp}, 回车跳过): ").strip() or controller.kp)
+                    kd_new = float(input(f"输入新的Kd (当前: {controller.kd}, 回车跳过): ").strip() or controller.kd)
+                    fc_new = float(input(f"输入新的滤波截止频率 (当前: {controller._accel_filter_cutoff} Hz, 回车跳过): ").strip() or controller._accel_filter_cutoff)
+
                     controller.kp = kp_new
                     controller.kd = kd_new
+                    controller._accel_filter_cutoff = fc_new
+                    controller._accel_filter_alpha = controller._compute_filter_alpha(fc_new)
                     print("参数已更新")
+                    print(f"新的滤波器系数 alpha: {controller._accel_filter_alpha:.4f}")
                 except ValueError:
                     print("输入无效，参数未改变")
 
