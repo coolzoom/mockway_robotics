@@ -61,14 +61,15 @@ config.deg_slot = 18                                                     -- 螺�
 config.h_flank_reserve = 3.2;                                            -- 法兰预计抽空高度
 -- 法兰颈部高度
 config.h_flank_nick = (config.thickness - config.h_motor_convex) + config.h_flank_reserve;
-config.h_flank_sum = config.h_flank_nick + config.h_flank;  -- 法兰总高度
-config.r_flank_outer = config.r_flank_groove - 0.5;         -- 法兰外壁半径，预留1mm空间转动
-config.r_flank_inner = config.r_motor_flank;                -- 法兰本体半径
+config.h_flank_sum = config.h_flank_nick + config.h_flank; -- 法兰总高度
+config.r_flank_outer = config.r_flank_groove - 0.5;        -- 法兰外壁半径，预留1mm空间转动
+config.r_flank_inner = config.r_motor_flank;               -- 法兰本体半径
 -- 连杆
-config.r_arm_out = config.r_flank_screw_pos - 3.5 - 1;      -- 臂外径，预留螺母位，再额外预留1mm空间
-config.r_arm_in = config.r_arm_out - config.thickness;      -- 臂内径，控制壁厚
-config.h_upper_arm = 127                                    -- 大臂(上臂)高度 140/127
-config.h_fore_arm = 100                                     -- 小臂(前臂)高度 127/100
+config.r_arm_out = config.r_flank_screw_pos - 3.5 - 1;     -- 臂外径，预留螺母位，再额外预留1mm空间
+config.r_arm_in = config.r_arm_out - config.thickness;     -- 臂内径，控制壁厚
+config.h_upper_arm = 127                                   -- 大臂(上臂)高度 140/127
+config.h_fore_arm = 100                                    -- 小臂(前臂)高度 127/100
 -- 末端
-config.h_tail_sum = config.thickness + config.h_flank + 0.5 -- 末端高度
+config.h_tail = 6                                          -- 末端平台高度
+config.h_tail_sum = config.thickness + config.h_tail + 0.5 -- 末端总高度，电机法兰高度基础上再预留0.5mm
 return config
