@@ -10,28 +10,10 @@ local config = require('config')
 
 local motor4310 = cylinder.new(config.r_motor * 1e-3, 45 * 1e-3):color('black'):mass(0.295)
 local motor4340 = cylinder.new(config.r_motor * 1e-3, 52.25 * 1e-3):color('black'):mass(0.36)
---[[
-local m_joint = shell.m:copy()
--- m_joint:fuse(lid.m:copy():z((config.h_shell + 1e-3) * 1e-3))
-local m_joint_flank = m_joint:copy()
-m_joint_flank:fuse(flank.m:copy():move('rz', 90):move('ry', 90):x(config.r_outer * 1e-3):z(config.r_outer * 1e-3):copy())
-
-local base_link = base.m:copy()
-base_link:fuse(flank.m:copy():z((config.h_base - config.h_flank) * 1e-3):rz(90))
-local shoulder = m_joint_flank:copy():z((config.h_base + config.h_flank_reserve) * 1e-3)
-
-local upperarm = m_joint:copy():rot(180, -90, 0)
-upperarm:x((config.r_outer + config.h_flank + config.h_flank_reserve) * 1e-3)
-upperarm:z((config.h_base + config.h_flank_reserve + config.r_outer) * 1e-3)
-
-base_link:color('#6495ED'):show()
-shoulder:color('#8470FF'):show()
-upperarm:color('#FFC1C1'):show()
---]]
-
 
 local base_link = {}
 local shoulder = {}
+local upperarm = {}
 
 local m_base = base.m:copy():mass(78 * 1e-3)
 local m_flank = flank.m:copy():mass((12 + 4 + 3) * 1e-3)
@@ -51,7 +33,6 @@ for i = 1, #shoulder do
     shoulder[i]:color('#8470FF')
 end
 
-local upperarm = {}
 upperarm[1] = m_shell:copy():rot(180, -90, -90)
     :y(-(config.r_outer + config.h_flank + config.h_flank_reserve) * 1e-3)
     :z((config.h_base + config.h_flank_reserve + config.r_outer) * 1e-3)
