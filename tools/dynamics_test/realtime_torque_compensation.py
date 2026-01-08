@@ -634,7 +634,7 @@ def demo_comparison(config=None):
             print(f"\n最终状态:")
             print(f"  位置: {state['q']} rad")
             print(f"  速度: {state['v']} rad/s")
-            print(f"  加速度: {state['a']} rad/s²")
+            # print(f"  加速度: {state['a']} rad/s²")
             print(f"  力矩: {state['tau']} Nm")
 
             time.sleep(1.0)
