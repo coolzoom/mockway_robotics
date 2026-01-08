@@ -382,7 +382,7 @@ class RealtimeTorqueController:
                     tau_str = ', '.join([f"{ti:6.3f}" for ti in tau])
                     print(f"\r位置: [{q_str}] rad  "
                           f"速度: [{v_str}] rad/s  "
-                          f"加速度: [{a_str}] rad/s²  "
+                        #   f"加速度: [{a_str}] rad/s²  "
                           f"力矩: [{tau_str}] Nm", end='')
                     last_print_time = time.time()
 
