@@ -30,11 +30,11 @@ end
 
 local export_product = false
 if export_product then
-    model_arm_link(config.h_fore_arm):color('turquoise'):export_step('fore_arm.step'):show()
     model_arm_link(config.h_upper_arm):color('turquoise'):export_step('upper_arm.step'):show()
+    model_arm_link(config.h_fore_arm):color('turquoise'):export_step('fore_arm.step'):show()
 end
 
 return {
-    m1 = model_arm_link0(config.h_fore_arm):copy():scale(1e-3),
-    m2 = model_arm_link0(config.h_upper_arm):copy():scale(1e-3)
+    m1 = model_arm_link0(config.h_upper_arm):copy():scale(1e-3),
+    m2 = model_arm_link0(config.h_fore_arm):copy():scale(1e-3)
 }

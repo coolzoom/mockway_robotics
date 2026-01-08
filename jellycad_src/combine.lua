@@ -23,60 +23,64 @@ m_shell:mass((55 + 2) * 1e-3)
 m1_linkage:mass((70.5 + 10) * 1e-3)
 m2_linkage:mass((57.8 + 10) * 1e-3)
 m_elbow:mass((41.8) * 1e-3)
--- 基座
+-- 【基座】
 local base_link = {}
 base_link[1] = m_base:copy()
 base_link[2] = m_flank:copy():z((config.h_base - config.h_flank) * 1e-3)
 for i = 1, #base_link do
     base_link[i]:color('#6495ED')
 end
--- 肩部
+-- 公用参数
+local h0_shoulder = config.h_base + config.h_flank_reserve + config.r_outer
+local h1_shoulder = h0_shoulder + 2 * config.r_outer + config.h_upper_arm
+-- 【肩部】
 local shoulder = {}
 shoulder[1] = m_shell:copy():z((config.h_base + config.h_flank_reserve) * 1e-3)
     :rz(-90):color('#8470FF')
 shoulder[2] = motor4310:copy():z((config.h_base + config.h_flank_reserve + config.thickness) * 1e-3)
 shoulder[3] = m_flank:copy():rot(90, 0, 0):y((-config.r_outer) * 1e-3)
-    :z((config.h_base + config.h_flank_reserve + config.r_outer) * 1e-3):color('#8470FF')
--- 上臂
+    :z((h0_shoulder) * 1e-3):color('#8470FF')
+-- 【上臂】
 local upperarm = {}
 upperarm[1] = m_shell:copy():rot(180, -90, -90)
     :y(-(config.r_outer + config.h_flank + config.h_flank_reserve) * 1e-3)
-    :z((config.h_base + config.h_flank_reserve + config.r_outer) * 1e-3):color('#31C5C5')
+    :z((h0_shoulder) * 1e-3):color('#31C5C5')
+-- J2关节电机
 upperarm[2] = motor4340:copy():rot(180, -90, -90)
     :y(-(config.r_outer + config.h_flank + config.h_flank_reserve + config.thickness) * 1e-3)
-    :z((config.h_base + config.h_flank_reserve + config.r_outer) * 1e-3)
+    :z((h0_shoulder) * 1e-3)
 upperarm[3] = m_shell:copy():rot(0, 90, -90)
     :y(-(config.r_outer + config.h_flank + config.h_flank_reserve) * 1e-3)
-    :z((config.h_base + 2 * config.r_outer + config.h_upper_arm + 2 * config.h_flank) * 1e-3):color('#31C5C5')
+    :z((h1_shoulder) * 1e-3):color('#31C5C5')
+-- J3关节电机
 upperarm[4] = motor4340:copy():rot(0, 90, -90)
     :y(-(config.r_outer + config.h_flank + config.h_flank_reserve + config.thickness) * 1e-3)
-    :z((config.h_base + 2 * config.r_outer + config.h_upper_arm + 2 * config.h_flank) * 1e-3)
+    :z((h1_shoulder) * 1e-3)
 upperarm[5] = m1_linkage:copy()
     :y(-(2 * config.r_outer + config.h_flank + config.h_flank_reserve) * 1e-3)
-    :z((config.h_base + config.h_flank_reserve + 2 * config.r_outer) * 1e-3):color('#31C5C5')
-
--- 前臂
+    :z((h0_shoulder + config.r_outer) * 1e-3):color('#31C5C5')
+-- 【前臂】
 local forearm = {}
 forearm[1] = m_flank:copy():rot(90, 0, 0)
     :y(-(config.r_outer) * 1e-3)
-    :z((config.h_base + 2 * config.r_outer + config.h_upper_arm + 2 * config.h_flank) * 1e-3)
+    :z((h1_shoulder) * 1e-3)
     :color('#FF7F50')
 forearm[2] = m_elbow:copy():rot(0, -90, -90)
     :y(-(config.r_outer + config.h_flank) * 1e-3)
-    :z((config.h_base + 2 * config.r_outer + config.h_upper_arm + 2 * config.h_flank) * 1e-3)
+    :z((h1_shoulder) * 1e-3)
     :color('#FF7F50')
 forearm[3] = m2_linkage:copy()
-    :z((config.h_base + 3 * config.r_outer + config.h_upper_arm + 2 * config.h_flank) * 1e-3)
+    :z((h1_shoulder + config.r_outer) * 1e-3)
     :color('#FF7F50')
 forearm[4] = m_shell:copy():rot(0, 90, 90)
     :y(-(config.r_outer) * 1e-3)
-    :z((config.h_base + 5 * config.r_outer + config.h_upper_arm + 1 * config.h_flank + config.h_fore_arm) * 1e-3)
+    :z((h1_shoulder + 2 * config.r_outer + config.h_fore_arm) * 1e-3)
     :color('#FF7F50')
 forearm[5] = motor4310:copy():rot(0, 90, 90)
     :y(-(config.r_outer - config.thickness) * 1e-3)
-    :z((config.h_base + 5 * config.r_outer + config.h_upper_arm + 1 * config.h_flank + config.h_fore_arm) * 1e-3)
+    :z((h1_shoulder + 2 * config.r_outer + config.h_fore_arm) * 1e-3)
 
-local d1 = (config.h_base + config.h_flank_reserve + config.r_outer) * 1e-3
+local d1 = (h0_shoulder) * 1e-3
 local a2 = (2 * config.r_outer + config.h_upper_arm) * 1e-3
 
 local joint_axes = {}
@@ -103,4 +107,4 @@ joint2 = link1:add(joint.new("joint2", joint_axes[2], "revolute", j2_limit))
 link2 = joint2:next(link.new("link2", upperarm))
 joint3 = link2:add(joint.new("joint3", joint_axes[3], "revolute", j3_limit))
 link3 = joint3:next(link.new("link3", forearm))
--- urdf:export({ name = 'mockway_description', path = '../', ros_version = 2 })
+urdf:export({ name = 'mockway_description', path = '../', ros_version = 2 })
