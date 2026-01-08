@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
+# Copyright (c) 2025. Li Jianbin. All rights reserved.
+# MIT License
+
 """
 达妙电机 DM-J4310-2EC 图形控制界面
 通过维特USB-CAN适配器进行CAN通信
-
-作者: Claude
-日期: 2025-12-30
 """
 
 import tkinter as tk

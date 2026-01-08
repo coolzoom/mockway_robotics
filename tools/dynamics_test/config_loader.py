@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
+# Copyright (c) 2025. Li Jianbin. All rights reserved.
+# MIT License
+
 """
 Mockway Robot - Configuration Loader for Dynamics Test
 
 This module provides configuration loading and validation for the real-time
 torque compensation control system.
-
-Author: Claude
-Date: 2026-01-07
 """
 
 import sys

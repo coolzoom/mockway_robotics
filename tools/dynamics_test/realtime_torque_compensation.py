@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
+# Copyright (c) 2025. Li Jianbin. All rights reserved.
+# MIT License
+
 """
 Mockway Robot - Real-time Torque Compensation using Pinocchio
 
@@ -9,9 +13,6 @@ This program implements real-time dynamics-based torque compensation for the Moc
 - Joint 1: DM-J4310-2EC (ID=1)
 - Joint 2: DM4340 (ID=2)
 - Provides gravity compensation and optional trajectory tracking
-
-Author: Claude
-Date: 2026-01-07
 """
 
 import sys

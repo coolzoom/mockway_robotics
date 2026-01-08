@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
+# Copyright (c) 2025. Li Jianbin. All rights reserved.
+# MIT License
+
 """
 达妙电机 DM-J4310-2EC 驱动程序
 通过维特USB-CAN适配器进行CAN通信
@@ -10,9 +14,6 @@
 - 速度控制模式
 - 电机使能/禁用
 - 状态反馈读取
-
-作者: Claude
-日期: 2025-12-30
 """
 
 import serial
