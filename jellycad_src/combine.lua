@@ -21,8 +21,8 @@ m_base:mass(78 * 1e-3)
 m_flank:mass((12 + 4 + 3) * 1e-3)
 m_shell:mass((55 + 2) * 1e-3)
 m1_linkage:mass((70.5 + 10) * 1e-3)
-m2_linkage:mass((60.5 + 10) * 1e-3)
-m_elbow:mass((30 + 10) * 1e-3)
+m2_linkage:mass((57.8 + 10) * 1e-3)
+m_elbow:mass((41.8) * 1e-3)
 -- 基座
 local base_link = {}
 base_link[1] = m_base:copy()
@@ -77,10 +77,12 @@ forearm[5] = motor4310:copy():rot(0, 90, 90)
     :z((config.h_base + 5 * config.r_outer + config.h_upper_arm + 1 * config.h_flank + config.h_fore_arm) * 1e-3)
 
 local d1 = (config.h_base + config.h_flank_reserve + config.r_outer) * 1e-3
+local a2 = (2 * config.r_outer + config.h_upper_arm) * 1e-3
 
 local joint_axes = {}
 joint_axes[1] = axes.new({ 0, 0, d1, 0, 0, 0 }, 0.1)
 joint_axes[2] = joint_axes[1]:copy():move({ 0, 0, 0, 90, 0, 0 })
+joint_axes[3] = joint_axes[2]:copy():move({ 0, a2, 0, 0, 0, 0 })
 
 for _, arr in ipairs({ joint_axes, base_link, shoulder, upperarm, forearm }) do
     for _, value in ipairs(arr) do
@@ -99,4 +101,6 @@ joint1 = urdf:add(joint.new("joint1", joint_axes[1], "revolute", j1_limit))
 link1 = joint1:next(link.new("link1", shoulder))
 joint2 = link1:add(joint.new("joint2", joint_axes[2], "revolute", j2_limit))
 link2 = joint2:next(link.new("link2", upperarm))
+joint3 = link2:add(joint.new("joint3", joint_axes[3], "revolute", j3_limit))
+link3 = joint3:next(link.new("link3", forearm))
 -- urdf:export({ name = 'mockway_description', path = '../', ros_version = 2 })
