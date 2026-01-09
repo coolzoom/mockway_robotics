@@ -36,6 +36,7 @@ class MotorConfig:
     motor_type: MotorType
     master_id: int
     description: str = ""
+    direction: int = 1  # 电机旋转方向: 1=正向(与关节同向), -1=反向(与关节反向)
 
 
 @dataclass
@@ -88,13 +89,15 @@ def get_default_config() -> DynamicsTestConfig:
             motor_id=1,
             motor_type=MotorType.DM_J4310_2EC,
             master_id=0,
-            description="Joint 1"
+            description="Joint 1",
+            direction=1
         ),
         MotorConfig(
             motor_id=2,
             motor_type=MotorType.DM4340,
             master_id=0,
-            description="Joint 2"
+            description="Joint 2",
+            direction=1
         ),
     ]
 
@@ -217,7 +220,8 @@ def load_config(config_path: Optional[str] = None) -> DynamicsTestConfig:
                 motor_id=motor_data.get('id'),
                 motor_type=motor_type_from_string(motor_data.get('type')),
                 master_id=motor_data.get('master_id', 0),
-                description=motor_data.get('description', '')
+                description=motor_data.get('description', ''),
+                direction=motor_data.get('direction', 1)  # 默认为1(正向)
             )
             motors.append(motor)
 
@@ -294,6 +298,8 @@ def print_config_summary(config: DynamicsTestConfig):
         print(f"    CAN ID: {motor.motor_id}")
         print(f"    型号: {motor.motor_type.name}")
         print(f"    主机ID: {motor.master_id}")
+        direction_str = "正向(与关节同向)" if motor.direction == 1 else "反向(与关节反向)"
+        print(f"    旋转方向: {motor.direction} ({direction_str})")
         if motor.description:
             print(f"    描述: {motor.description}")
     print(f"\n控制频率: {config.control_rate} Hz")

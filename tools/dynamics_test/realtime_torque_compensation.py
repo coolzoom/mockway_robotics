@@ -140,6 +140,9 @@ class RealtimeTorqueController:
         self.motors = []  # List[DMMotor] - dynamic list of motors
         self.num_motors = len(config.motors)
 
+        # Motor directions (1=forward, -1=reverse)
+        self.motor_directions = np.array([m.direction for m in config.motors])
+
         # Control parameters
         self.control_rate = config.control_rate  # Hz
         self.dt = 1.0 / self.control_rate
@@ -284,8 +287,9 @@ class RealtimeTorqueController:
 
         for i, motor in enumerate(self.motors):
             state = motor.get_state()
-            q[i] = state.position
-            v[i] = state.velocity
+            # Apply motor direction (convert motor coordinates to joint coordinates)
+            q[i] = state.position * self.motor_directions[i]
+            v[i] = state.velocity * self.motor_directions[i]
 
         return q, v
 
@@ -331,20 +335,26 @@ class RealtimeTorqueController:
         Send torque commands to motors via MIT control mode
 
         Args:
-            tau: Joint torques (num_motors,) in Nm
+            tau: Joint torques (num_motors,) in Nm (in joint coordinates)
         """
-        # Get current state for feedforward
-        q, v = self.get_current_state()
+        # Get current motor state (raw motor feedback)
+        q_motor = np.zeros(self.num_motors)
+        for i, motor in enumerate(self.motors):
+            state = motor.get_state()
+            q_motor[i] = state.position  # Raw motor position (not converted)
 
         # Send MIT control commands to all motors
         # Using kp=0, kd>0 for damping, and t_ff for torque command
         for i, motor in enumerate(self.motors):
+            # Convert joint torque to motor torque using direction
+            motor_torque = tau[i] * self.motor_directions[i]
+
             motor.control_mit(
-                p_des=q[i],  # Current position
-                v_des=0.0,   # Zero desired velocity
+                p_des=q_motor[i],  # Current motor position (raw)
+                v_des=0.0,         # Zero desired velocity
                 kp=self.kp,
                 kd=self.kd,
-                t_ff=tau[i]
+                t_ff=motor_torque  # Motor torque
             )
 
     def _control_loop(self):
