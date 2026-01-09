@@ -83,21 +83,28 @@ def get_default_config() -> DynamicsTestConfig:
     Returns:
         DynamicsTestConfig: 默认配置对象
     """
-    # 默认电机配置（与原始硬编码一致）
+    # 默认电机配置（3个电机）
     default_motors = [
         MotorConfig(
             motor_id=1,
             motor_type=MotorType.DM_J4310_2EC,
             master_id=0,
-            description="Joint 1",
+            description="Joint 1 - Shoulder",
             direction=1
         ),
         MotorConfig(
             motor_id=2,
             motor_type=MotorType.DM4340,
             master_id=0,
-            description="Joint 2",
+            description="Joint 2 - Elbow",
             direction=1
+        ),
+        MotorConfig(
+            motor_id=3,
+            motor_type=MotorType.DM4340,
+            master_id=0,
+            description="Joint 3 - Forearm",
+            direction=-1
         ),
     ]
 
