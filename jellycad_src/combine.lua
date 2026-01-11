@@ -124,11 +124,18 @@ wrist3[1] = m_tail:copy():rot(0, 90, 90)
 local d1 = (h0_shoulder) * 1e-3
 -- J2轴到J3轴的距离
 local a2 = (2 * config.r_outer + config.h_upper_arm) * 1e-3
+local a3 = (2 * config.r_outer + config.h_fore_arm) * 1e-3
+local d4 = (2 * config.r_outer + config.h_flank_sum - config.thickness + config.h_motor_convex) * 1e-3
+local d5 = (2 * config.r_outer + config.h_flank_sum - config.thickness + config.h_motor_convex) * 1e-3
+local d6 = (config.r_outer + config.h_tail_sum - config.thickness + config.h_motor_convex) * 1e-3
 
 local joint_axes = {}
 joint_axes[1] = axes.new({ 0, 0, d1, 0, 0, 0 }, 0.1)
 joint_axes[2] = joint_axes[1]:copy():move({ 0, 0, 0, 90, 0, 0 })
 joint_axes[3] = joint_axes[2]:copy():move({ 0, a2, 0, 0, 0, 0 })
+joint_axes[4] = joint_axes[3]:copy():move({ 0, a3, 0, 0, 0, 0 })
+joint_axes[5] = joint_axes[4]:copy():move({ 0, 0, d4, -90, 0, 0 })
+joint_axes[6] = joint_axes[5]:copy():move({ 0, -d6, d5, 90, 0, 0 })
 
 for _, arr in ipairs({ joint_axes, base_link, shoulder, upperarm, forearm, wrist1, wrist2, wrist3 }) do
     for _, value in ipairs(arr) do
@@ -149,4 +156,10 @@ local joint2 = link1:add(joint.new("joint2", joint_axes[2], "revolute", j2_limit
 local link2 = joint2:next(link.new("link2", upperarm))
 local joint3 = link2:add(joint.new("joint3", joint_axes[3], "revolute", j3_limit))
 local link3 = joint3:next(link.new("link3", forearm))
--- urdf:export({ name = 'mockway_description', path = '../', ros_version = 2 })
+local joint4 = link3:add(joint.new("joint4", joint_axes[4], "revolute", j4_limit))
+local link4 = joint4:next(link.new("link4", wrist1))
+local joint5 = link4:add(joint.new("joint5", joint_axes[5], "revolute", j5_limit))
+local link5 = joint5:next(link.new("link5", wrist2))
+local joint6 = link5:add(joint.new("joint6", joint_axes[6], "revolute", j6_limit))
+local link6 = joint6:next(link.new("link6", wrist3))
+urdf:export({ name = 'mockway_description', path = '../', ros_version = 2 })
