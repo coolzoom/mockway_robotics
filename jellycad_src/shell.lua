@@ -82,6 +82,6 @@ end
 
 local export_product = false
 if export_product then
-    model_shell0():color('turquoise'):export_step('shell.step'):show()
+    model_shell():color('turquoise'):export_step('shell.step'):show()
 end
 return { m = model_shell0():scale(1e-3) }

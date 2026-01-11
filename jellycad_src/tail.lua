@@ -1,19 +1,35 @@
 local config = require('config')
-tail = cylinder.new(config.r_flank_outer, config.h_tail)
-tail:fuse(cylinder.new(config.r_flank_inner, config.h_tail_sum))
-for i, deg in ipairs({ 0, 60, 120, 180, 240, 300 }) do
-    local rad = deg * math.pi / 180;
-    local x0 = config.r_flank_screw_pos * math.cos(rad);
-    local y0 = config.r_flank_screw_pos * math.sin(rad);
-    local screw_inner = cylinder.new(config.r_m3d4_nut, config.h_tail):pos(x0, y0, 0)
-    tail:cut(screw_inner)
-    -- 固定在电机法兰上的M3螺丝孔
-    local x4 = config.r_screw_motor_flank * math.sin(rad);
-    local y4 = config.r_screw_motor_flank * math.cos(rad);
-    local screw_inner = cylinder.new(config.r_m3_hole, config.h_tail_sum):pos(x4, y4, 0)
-    tail:cut(screw_inner)
-    tail:cut(cone.new(config.r_m3_head, 0, config.r_m3_head):pos(x4, y4, 0));
+
+function model_tail0()
+    local tail0 = cylinder.new(config.r_flank_outer, config.h_tail)
+    tail0:fuse(cylinder.new(config.r_flank_inner, config.h_tail_sum))
+    for i = 0, 5 do
+        local rad = i * math.pi / 3 -- 60° = π/3
+        local x0 = config.r_flank_screw_pos * math.cos(rad);
+        local y0 = config.r_flank_screw_pos * math.sin(rad);
+        local screw_inner = cylinder.new(config.r_m3d4_nut, config.h_tail):pos(x0, y0, 0)
+        tail0:cut(screw_inner)
+    end
+    return tail0:copy()
 end
-tail:color('gray'):show()
--- tail:export_step('tail.step')
-return { model = tail:copy(), m = tail:copy():scale(1e-3) }
+
+function model_tail()
+    local tail = model_tail0()
+    for i = 0, 5 do
+        local rad = i * math.pi / 3 -- 60° = π/3
+        -- 固定在电机法兰上的M3螺丝孔
+        local x4 = config.r_screw_motor_flank * math.sin(rad);
+        local y4 = config.r_screw_motor_flank * math.cos(rad);
+        local screw_inner = cylinder.new(config.r_m3_hole, config.h_tail_sum):pos(x4, y4, 0)
+        tail:cut(screw_inner)
+        tail:cut(cone.new(config.r_m3_head, 0, config.r_m3_head):pos(x4, y4, 0));
+    end
+    return tail:copy()
+end
+
+local export_product = false
+if export_product then
+    model_tail():color('gray'):export_step('tail.step'):show()
+end
+
+return { m = model_tail0():scale(1e-3) }
