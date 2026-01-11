@@ -3,6 +3,7 @@ local shell = require('shell')
 local flank = require('flank')
 local linkage = require('linkage')
 local elbow = require('elbow')
+local tail = require('tail')
 local config = require('config')
 
 local motor4310 = cylinder.new(config.r_motor * 1e-3, 45 * 1e-3):color('black')
@@ -13,6 +14,7 @@ local m_shell = shell.m:copy()
 local m1_linkage = linkage.m1:copy()
 local m2_linkage = linkage.m2:copy()
 local m_elbow = elbow.m:copy()
+local m_tail = tail.m:copy()
 
 -- 设置各个部件的质量
 motor4310:mass(295 * 1e-3)
@@ -23,6 +25,7 @@ m_shell:mass((55 + 2) * 1e-3)
 m1_linkage:mass((70.5 + 10) * 1e-3)
 m2_linkage:mass((57.8 + 10) * 1e-3)
 m_elbow:mass((41.8) * 1e-3)
+m_tail:mass((18) * 1e-3)
 -- 【基座】
 local base_link = {}
 base_link[1] = m_base:copy()
@@ -111,6 +114,12 @@ wrist2[3] = m_flank:copy():rot(180, 0, 0)
     :z((w1_wrist) * 1e-3)
     :color('#4682B4')
 
+local wrist3 = {}
+wrist3[1] = m_tail:copy():rot(0, 90, 90)
+    :y(-(w0_wrist + config.r_outer + config.h_tail + config.h_motor_convex) * 1e-3)
+    :z((w1_wrist + config.r_outer) * 1e-3)
+    :color('gray')
+
 -- 基座底部到J2轴的距离
 local d1 = (h0_shoulder) * 1e-3
 -- J2轴到J3轴的距离
@@ -121,7 +130,7 @@ joint_axes[1] = axes.new({ 0, 0, d1, 0, 0, 0 }, 0.1)
 joint_axes[2] = joint_axes[1]:copy():move({ 0, 0, 0, 90, 0, 0 })
 joint_axes[3] = joint_axes[2]:copy():move({ 0, a2, 0, 0, 0, 0 })
 
-for _, arr in ipairs({ joint_axes, base_link, shoulder, upperarm, forearm, wrist1, wrist2 }) do
+for _, arr in ipairs({ joint_axes, base_link, shoulder, upperarm, forearm, wrist1, wrist2, wrist3 }) do
     for _, value in ipairs(arr) do
         value:show()
     end
@@ -140,4 +149,4 @@ local joint2 = link1:add(joint.new("joint2", joint_axes[2], "revolute", j2_limit
 local link2 = joint2:next(link.new("link2", upperarm))
 local joint3 = link2:add(joint.new("joint3", joint_axes[3], "revolute", j3_limit))
 local link3 = joint3:next(link.new("link3", forearm))
-urdf:export({ name = 'mockway_description', path = '../', ros_version = 2 })
+-- urdf:export({ name = 'mockway_description', path = '../', ros_version = 2 })
