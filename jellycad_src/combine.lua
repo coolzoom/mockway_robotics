@@ -25,7 +25,7 @@ m_shell:mass((55 + 2) * 1e-3)
 m1_linkage:mass((70.5 + 10) * 1e-3)
 m2_linkage:mass((57.8 + 10) * 1e-3)
 m_elbow:mass((41.8) * 1e-3)
-m_tail:mass((18) * 1e-3)
+m_tail:mass((15.8) * 1e-3)
 -- 【基座】
 local base_link = {}
 base_link[1] = m_base:copy()
