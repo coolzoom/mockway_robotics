@@ -1,3 +1,9 @@
+--[[
+Copyright (c) 2025. Li Jianbin. All rights reserved.
+MIT License
+JellyCAD version v0.3.10
+Mockway Structure Tail Model File
+--]]
 local config = require('config')
 
 function model_tail0()

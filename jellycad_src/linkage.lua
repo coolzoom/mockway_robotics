@@ -1,3 +1,9 @@
+--[[
+Copyright (c) 2025. Li Jianbin. All rights reserved.
+MIT License
+JellyCAD version v0.3.10
+Mockway Structure Linkage Model File
+--]]
 local config = require('config')
 
 local function model_fix_flank()

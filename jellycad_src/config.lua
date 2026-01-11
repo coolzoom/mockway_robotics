@@ -1,7 +1,7 @@
 --[[
 Copyright (c) 2025. Li Jianbin. All rights reserved.
 MIT License
-JellyCAD version v0.3.9
+JellyCAD version v0.3.10
 Mockway Structure Config File
 --]]
 local config = {}
