@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<library path="dmmotor_hardware_interface">
+  <class name="dmmotor_hardware_interface/DMMototHardwareInterface"
+         type="dmmotor_hardware_interface::DMMototHardwareInterface"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      Hardware interface for DM motors (DM-J4310-2EC and DM4340) using SocketCAN.
+      Supports MIT control mode for position/velocity control.
+    </description>
+  </class>
+</library>
