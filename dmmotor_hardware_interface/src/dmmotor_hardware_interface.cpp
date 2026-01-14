@@ -706,14 +706,12 @@ hardware_interface::CallbackReturn DMMototHardwareInterface::on_init(
     serial_baudrate_ = 921600;
   }
 
-  // Read control parameters
-  position_kp_ = std::stod(info_.hardware_parameters["position_kp"]);
-  position_kd_ = std::stod(info_.hardware_parameters["position_kd"]);
-
   // Read motor configurations for each joint
   motor_ids_.resize(info_.joints.size());
   master_ids_.resize(info_.joints.size());
   motor_types_.resize(info_.joints.size());
+  position_kp_.resize(info_.joints.size());
+  position_kd_.resize(info_.joints.size());
 
   for (size_t i = 0; i < info_.joints.size(); ++i) {
     motor_ids_[i] = std::stoi(info_.joints[i].parameters.at("motor_id"));
@@ -725,6 +723,10 @@ hardware_interface::CallbackReturn DMMototHardwareInterface::on_init(
     } else {
       motor_types_[i] = MotorType::DM_J4310_2EC;
     }
+
+    // Read per-joint control parameters
+    position_kp_[i] = std::stod(info_.joints[i].parameters.at("position_kp"));
+    position_kd_[i] = std::stod(info_.joints[i].parameters.at("position_kd"));
   }
 
   // Initialize state vectors
@@ -897,12 +899,12 @@ hardware_interface::return_type DMMototHardwareInterface::write(
 {
   // Send commands to motors using MIT mode
   for (size_t i = 0; i < motors_.size(); ++i) {
-    // Use MIT control with position command
+    // Use MIT control with position command (per-joint kp/kd)
     motors_[i]->controlMIT(
       hw_commands_[i],     // target position
       0.0,                 // target velocity (let controller handle it)
-      position_kp_,        // position gain
-      position_kd_,        // damping gain
+      position_kp_[i],     // position gain (per-joint)
+      position_kd_[i],     // damping gain (per-joint)
       0.0                  // feedforward torque
     );
   }

@@ -235,9 +235,9 @@ private:
   std::vector<int> master_ids_;
   std::vector<MotorType> motor_types_;
 
-  // Control parameters
-  double position_kp_;
-  double position_kd_;
+  // Control parameters (per-joint)
+  std::vector<double> position_kp_;
+  std::vector<double> position_kd_;
 
   // Logging
   rclcpp::Logger logger_;
