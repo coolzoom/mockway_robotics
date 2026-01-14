@@ -1,6 +1,7 @@
 ## 测试环境
 
 Ubuntu24.04(WSL2)
+
 ROS2 Jazzy
 
 ## 一、环境步骤
@@ -88,6 +89,12 @@ ros2 launch moveit_setup_assistant setup_assistant.launch.py
 - 3️⃣`Generate Package`
 - 4️⃣`Exit Setup Assistant`
 
+### 检查生成内容
+
+```bash
+tree src/mockway_robotics/moveit_mockway_config/
+```
+
 ### 解决生成内容的问题
 
 #### ❌ No acceleration limit was defined for joint joint1! You have to define acceleration limits in the URDF or joint_limits.yaml
@@ -114,7 +121,19 @@ vim ~/mockway_ws/src/mockway_robotics/moveit_mockway_config/config/moveit_contro
 
 ## 四、启动Moveit2
 
-1. 再次编译工作空间和配置环境变量
+1. 安装包依赖
+
+删除`package.xml`中的`warehouse_ros_mongo`
+
+```bash
+vim ~/mockway_ws/src/mockway_robotics/moveit_mockway_config/package.xml
+```
+
+```bash
+rosdep install --from-paths src --ignore-src -r -y
+```
+
+2. 再次编译工作空间和配置环境变量
 
 ```bash
 cd ~/mockway_ws
@@ -122,7 +141,7 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
-1. 启动模拟器
+3. 启动模拟器
 
 ```bash
 ros2 launch moveit_mockway_config demo.launch.py
