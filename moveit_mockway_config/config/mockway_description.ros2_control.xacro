@@ -8,7 +8,10 @@
                 <!-- DM Motor Hardware Interface for real hardware -->
                 <plugin>dmmotor_hardware_interface/DMMototHardwareInterface</plugin>
                 <!-- CAN interface configuration -->
-                <param name="can_interface">can0</param>
+                <!-- <param name="can_interface">can0</param> -->
+                <param name="can_type">usb_can</param>
+                <param name="can_interface">/dev/ttyUSB0</param>
+                <param name="serial_baudrate">921600</param>
             </hardware>
             <!-- Joint 1: DM-J4310-2EC -->
             <joint name="joint1">

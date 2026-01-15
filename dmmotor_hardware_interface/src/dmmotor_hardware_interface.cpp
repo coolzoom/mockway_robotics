@@ -23,9 +23,17 @@
 #include <unistd.h>
 #include <cstring>
 #include <fcntl.h>    // O_NONBLOCK 定义在此
+#include <termios.h>  // 串口配置
 
 namespace dmmotor_hardware_interface
 {
+
+// CAN接口类型枚举
+enum CanType
+{
+  SOCKET_CAN,   // Linux SocketCAN
+  USB_CAN       // 维特USB-CAN适配器
+};
 
 class DMMototHardwareInterface : public hardware_interface::SystemInterface
 {
@@ -108,9 +116,13 @@ private:
   };
 
   // CAN通信相关
-  int can_socket_;
-  std::string can_interface_;
-  bool is_sim_hardware{true}; // 是否为仿真硬件接口，遇到非仿真关节时设置false，默认true
+  CanType can_type_{SOCKET_CAN};  // CAN接口类型，默认SocketCAN
+  int can_socket_;                // SocketCAN socket文件描述符
+  int serial_fd_{-1};             // USB-CAN串口文件描述符
+  int serial_baudrate_{921600};   // USB-CAN串口波特率
+  std::string can_interface_;     // CAN接口名称（can0）或串口设备路径（/dev/ttyUSB0）
+  std::vector<uint8_t> usb_can_rx_buffer_;  // USB-CAN接收缓冲区
+  bool is_sim_hardware{true};     // 是否为仿真硬件接口，遇到非仿真关节时设置false，默认true
 
   // 电机列表
   std::vector<DamiaoMotor> motors_;
@@ -137,6 +149,14 @@ private:
   // 数据转换函数
   uint16_t float_to_uint(float x, float x_min, float x_max, int bits);
   float uint_to_float(uint16_t x_int, float x_min, float x_max, int bits);
+
+  // USB-CAN串口通信相关函数
+  bool init_usb_can_serial();
+  void close_usb_can_serial();
+  bool send_usb_can_frame(uint32_t can_id, const uint8_t* data, size_t len);
+  bool receive_usb_can_frame(struct can_frame& frame);
+  void process_usb_can_rx_buffer();
+  bool enter_usb_can_at_mode();
 };
 
 hardware_interface::CallbackReturn DMMototHardwareInterface::on_init(
@@ -148,8 +168,31 @@ hardware_interface::CallbackReturn DMMototHardwareInterface::on_init(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
+  // 获取CAN接口类型(urdf: ros2_control->hardware->param : <param name="can_type">socketcan</param>)
+  // 默认使用SocketCAN以保持向后兼容
+  auto can_type_it = info_.hardware_parameters.find("can_type");
+  if (can_type_it != info_.hardware_parameters.end()) {
+    if (can_type_it->second == "usb_can" || can_type_it->second == "USB_CAN") {
+      can_type_ = USB_CAN;
+      RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"), "Using USB-CAN adapter");
+    } else {
+      can_type_ = SOCKET_CAN;
+      RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"), "Using SocketCAN");
+    }
+  } else {
+    can_type_ = SOCKET_CAN;
+    RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"), "Using SocketCAN (default)");
+  }
+
   // 获取CAN接口名称(urdf: ros2_control->hardware->param : <param name="can_interface">can0</param>)
+  // SocketCAN: can0, USB-CAN: /dev/ttyUSB0
   can_interface_ = info_.hardware_parameters.at("can_interface");
+
+  // USB-CAN串口波特率（可选，默认921600）
+  auto baudrate_it = info_.hardware_parameters.find("serial_baudrate");
+  if (baudrate_it != info_.hardware_parameters.end()) {
+    serial_baudrate_ = std::stoi(baudrate_it->second);
+  }
   
   // 初始化电机列表
   motors_.resize(info_.joints.size());
@@ -213,12 +256,28 @@ hardware_interface::CallbackReturn DMMototHardwareInterface::on_configure(
 {
   RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"), "Configuring...");
   if (is_sim_hardware) return hardware_interface::CallbackReturn::SUCCESS;
-  
-  if (!init_can_socket())
+
+  // 根据CAN类型初始化对应接口
+  bool init_success = false;
+  if (can_type_ == USB_CAN)
   {
-    RCLCPP_ERROR(rclcpp::get_logger("DMMototHardwareInterface"), 
-                 "Failed to initialize CAN socket");
-    return hardware_interface::CallbackReturn::ERROR;
+    init_success = init_usb_can_serial();
+    if (!init_success)
+    {
+      RCLCPP_ERROR(rclcpp::get_logger("DMMototHardwareInterface"),
+                   "Failed to initialize USB-CAN serial port");
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+  }
+  else
+  {
+    init_success = init_can_socket();
+    if (!init_success)
+    {
+      RCLCPP_ERROR(rclcpp::get_logger("DMMototHardwareInterface"),
+                   "Failed to initialize CAN socket");
+      return hardware_interface::CallbackReturn::ERROR;
+    }
   }
 
   // 读取非仿真关节的当前位置，避免电机启动时跳动
@@ -310,7 +369,7 @@ hardware_interface::CallbackReturn DMMototHardwareInterface::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"), "Deactivating...");
-  
+
   // 禁用所有电机
   for (const auto& motor : motors_)
   {
@@ -318,7 +377,15 @@ hardware_interface::CallbackReturn DMMototHardwareInterface::on_deactivate(
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 
-  close_can_socket();
+  // 根据CAN类型关闭对应接口
+  if (can_type_ == USB_CAN)
+  {
+    close_usb_can_serial();
+  }
+  else
+  {
+    close_can_socket();
+  }
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -405,15 +472,324 @@ void DMMototHardwareInterface::close_can_socket()
   }
 }
 
+bool DMMototHardwareInterface::init_usb_can_serial()
+{
+  serial_fd_ = open(can_interface_.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
+  if (serial_fd_ < 0)
+  {
+    RCLCPP_ERROR(rclcpp::get_logger("DMMototHardwareInterface"),
+                 "Failed to open serial port: %s", can_interface_.c_str());
+    return false;
+  }
+
+  struct termios tty;
+  memset(&tty, 0, sizeof(tty));
+
+  if (tcgetattr(serial_fd_, &tty) != 0)
+  {
+    RCLCPP_ERROR(rclcpp::get_logger("DMMototHardwareInterface"),
+                 "Failed to get serial port attributes");
+    close(serial_fd_);
+    serial_fd_ = -1;
+    return false;
+  }
+
+  // 设置波特率
+  speed_t baud;
+  switch (serial_baudrate_)
+  {
+    case 9600:   baud = B9600;   break;
+    case 19200:  baud = B19200;  break;
+    case 38400:  baud = B38400;  break;
+    case 57600:  baud = B57600;  break;
+    case 115200: baud = B115200; break;
+    case 230400: baud = B230400; break;
+    case 460800: baud = B460800; break;
+    case 921600: baud = B921600; break;
+    default:
+      RCLCPP_WARN(rclcpp::get_logger("DMMototHardwareInterface"),
+                  "Unsupported baudrate %d, using 921600", serial_baudrate_);
+      baud = B921600;
+  }
+  cfsetispeed(&tty, baud);
+  cfsetospeed(&tty, baud);
+
+  // 8N1配置
+  tty.c_cflag &= ~PARENB;        // 无奇偶校验
+  tty.c_cflag &= ~CSTOPB;        // 1位停止位
+  tty.c_cflag &= ~CSIZE;
+  tty.c_cflag |= CS8;            // 8位数据位
+  tty.c_cflag &= ~CRTSCTS;       // 无硬件流控
+  tty.c_cflag |= CREAD | CLOCAL; // 使能接收，忽略调制解调器控制线
+
+  // 原始模式
+  tty.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
+  tty.c_iflag &= ~(IXON | IXOFF | IXANY);
+  tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL);
+  tty.c_oflag &= ~OPOST;
+
+  // 非阻塞读取
+  tty.c_cc[VMIN] = 0;
+  tty.c_cc[VTIME] = 0;
+
+  if (tcsetattr(serial_fd_, TCSANOW, &tty) != 0)
+  {
+    RCLCPP_ERROR(rclcpp::get_logger("DMMototHardwareInterface"),
+                 "Failed to set serial port attributes");
+    close(serial_fd_);
+    serial_fd_ = -1;
+    return false;
+  }
+
+  // 清空缓冲区
+  tcflush(serial_fd_, TCIOFLUSH);
+  usb_can_rx_buffer_.clear();
+
+  RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"),
+              "USB-CAN serial port opened: %s at %d baud",
+              can_interface_.c_str(), serial_baudrate_);
+
+  // 进入AT指令模式
+  if (!enter_usb_can_at_mode())
+  {
+    RCLCPP_WARN(rclcpp::get_logger("DMMototHardwareInterface"),
+                "Failed to enter AT mode, continuing anyway...");
+  }
+
+  return true;
+}
+
+void DMMototHardwareInterface::close_usb_can_serial()
+{
+  if (serial_fd_ >= 0)
+  {
+    close(serial_fd_);
+    serial_fd_ = -1;
+    usb_can_rx_buffer_.clear();
+    RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"),
+                "USB-CAN serial port closed");
+  }
+}
+
+bool DMMototHardwareInterface::enter_usb_can_at_mode()
+{
+  if (serial_fd_ < 0) return false;
+
+  // 发送AT+AT命令进入AT指令模式
+  const char* cmd = "AT+AT\r\n";
+  ssize_t written = ::write(serial_fd_, cmd, strlen(cmd));
+  if (written < 0) return false;
+
+  // 等待响应
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  // 读取响应（不需要严格检查，继续运行）
+  uint8_t buffer[64];
+  ::read(serial_fd_, buffer, sizeof(buffer));
+
+  return true;
+}
+
+bool DMMototHardwareInterface::send_usb_can_frame(uint32_t can_id, const uint8_t* data, size_t len)
+{
+  if (serial_fd_ < 0 || len > 8) return false;
+
+  // 构建AT指令帧
+  // 格式: "AT"(2) + ID和类型混合(4) + 数据长度(1) + 数据(0-8) + "\r\n"(2)
+  uint8_t frame[17];  // 最大长度: 2 + 4 + 1 + 8 + 2 = 17
+  size_t frame_len = 0;
+
+  // AT前缀
+  frame[frame_len++] = 'A';
+  frame[frame_len++] = 'T';
+
+  // 标准帧ID编码：ID放在高11位
+  uint32_t raw_id = (can_id & 0x7FF) << 21;
+  frame[frame_len++] = (raw_id >> 24) & 0xFF;
+  frame[frame_len++] = (raw_id >> 16) & 0xFF;
+  frame[frame_len++] = (raw_id >> 8) & 0xFF;
+  frame[frame_len++] = raw_id & 0xFF;
+
+  // 数据长度
+  frame[frame_len++] = static_cast<uint8_t>(len);
+
+  // 数据
+  for (size_t i = 0; i < len; i++)
+  {
+    frame[frame_len++] = data[i];
+  }
+
+  // 结尾
+  frame[frame_len++] = '\r';
+  frame[frame_len++] = '\n';
+
+  ssize_t written = ::write(serial_fd_, frame, frame_len);
+  return written == static_cast<ssize_t>(frame_len);
+}
+
+void DMMototHardwareInterface::process_usb_can_rx_buffer()
+{
+  // 处理接收缓冲区，提取完整的AT指令帧
+  // 格式: AT(2) + ID_TYPE(4) + 长度(1) + 数据(0-8) + \r\n(2)
+  // 最小帧长度: 2 + 4 + 1 + 0 + 2 = 9
+
+  while (usb_can_rx_buffer_.size() >= 9)
+  {
+    // 查找 "AT" 开头
+    auto it = std::find(usb_can_rx_buffer_.begin(), usb_can_rx_buffer_.end(), 'A');
+    if (it == usb_can_rx_buffer_.end())
+    {
+      usb_can_rx_buffer_.clear();
+      return;
+    }
+
+    // 移除 "AT" 之前的数据
+    if (it != usb_can_rx_buffer_.begin())
+    {
+      usb_can_rx_buffer_.erase(usb_can_rx_buffer_.begin(), it);
+    }
+
+    if (usb_can_rx_buffer_.size() < 2) return;
+
+    // 检查是否以 "AT" 开头
+    if (usb_can_rx_buffer_[0] != 'A' || usb_can_rx_buffer_[1] != 'T')
+    {
+      usb_can_rx_buffer_.erase(usb_can_rx_buffer_.begin());
+      continue;
+    }
+
+    if (usb_can_rx_buffer_.size() < 7) return;  // AT(2) + ID_TYPE(4) + 长度(1)
+
+    // 获取数据长度
+    uint8_t data_len = usb_can_rx_buffer_[6];
+    if (data_len > 8)
+    {
+      // 无效长度，跳过这个字节继续查找
+      usb_can_rx_buffer_.erase(usb_can_rx_buffer_.begin());
+      continue;
+    }
+
+    size_t frame_len = 2 + 4 + 1 + data_len + 2;  // AT + ID_TYPE + 长度 + 数据 + \r\n
+    if (usb_can_rx_buffer_.size() < frame_len) return;
+
+    // 检查帧结尾
+    if (usb_can_rx_buffer_[frame_len - 2] != '\r' || usb_can_rx_buffer_[frame_len - 1] != '\n')
+    {
+      usb_can_rx_buffer_.erase(usb_can_rx_buffer_.begin());
+      continue;
+    }
+
+    // 提取并移除这个帧（帧已处理，实际解析在receive_usb_can_frame中进行）
+    usb_can_rx_buffer_.erase(usb_can_rx_buffer_.begin(), usb_can_rx_buffer_.begin() + frame_len);
+  }
+}
+
+bool DMMototHardwareInterface::receive_usb_can_frame(struct can_frame& frame)
+{
+  if (serial_fd_ < 0) return false;
+
+  // 从串口读取数据到缓冲区
+  uint8_t buffer[64];
+  ssize_t bytes_read = ::read(serial_fd_, buffer, sizeof(buffer));
+  if (bytes_read > 0)
+  {
+    usb_can_rx_buffer_.insert(usb_can_rx_buffer_.end(), buffer, buffer + bytes_read);
+  }
+
+  // 尝试从缓冲区解析一个完整的CAN帧
+  // 格式: AT(2) + ID_TYPE(4) + 长度(1) + 数据(0-8) + \r\n(2)
+  while (usb_can_rx_buffer_.size() >= 9)
+  {
+    // 查找 "AT" 开头
+    auto it = std::find(usb_can_rx_buffer_.begin(), usb_can_rx_buffer_.end(), 'A');
+    if (it == usb_can_rx_buffer_.end())
+    {
+      usb_can_rx_buffer_.clear();
+      return false;
+    }
+
+    if (it != usb_can_rx_buffer_.begin())
+    {
+      usb_can_rx_buffer_.erase(usb_can_rx_buffer_.begin(), it);
+    }
+
+    if (usb_can_rx_buffer_.size() < 2) return false;
+
+    if (usb_can_rx_buffer_[0] != 'A' || usb_can_rx_buffer_[1] != 'T')
+    {
+      usb_can_rx_buffer_.erase(usb_can_rx_buffer_.begin());
+      continue;
+    }
+
+    if (usb_can_rx_buffer_.size() < 7) return false;
+
+    uint8_t data_len = usb_can_rx_buffer_[6];
+    if (data_len > 8)
+    {
+      usb_can_rx_buffer_.erase(usb_can_rx_buffer_.begin());
+      continue;
+    }
+
+    size_t frame_len = 2 + 4 + 1 + data_len + 2;
+    if (usb_can_rx_buffer_.size() < frame_len) return false;
+
+    if (usb_can_rx_buffer_[frame_len - 2] != '\r' || usb_can_rx_buffer_[frame_len - 1] != '\n')
+    {
+      usb_can_rx_buffer_.erase(usb_can_rx_buffer_.begin());
+      continue;
+    }
+
+    // 解析ID（4字节大端序）
+    uint32_t raw_id = (static_cast<uint32_t>(usb_can_rx_buffer_[2]) << 24) |
+                      (static_cast<uint32_t>(usb_can_rx_buffer_[3]) << 16) |
+                      (static_cast<uint32_t>(usb_can_rx_buffer_[4]) << 8) |
+                      static_cast<uint32_t>(usb_can_rx_buffer_[5]);
+
+    // 判断帧类型：bit1=0标准帧，bit1=1扩展帧
+    bool is_extended = (raw_id & 0x04) != 0;
+
+    if (is_extended)
+    {
+      // 扩展帧，ID在高29位
+      frame.can_id = ((raw_id >> 3) & 0x1FFFFFFF) | CAN_EFF_FLAG;
+    }
+    else
+    {
+      // 标准帧，ID在高11位
+      frame.can_id = (raw_id >> 21) & 0x7FF;
+    }
+
+    frame.can_dlc = data_len;
+    for (uint8_t i = 0; i < data_len; i++)
+    {
+      frame.data[i] = usb_can_rx_buffer_[7 + i];
+    }
+
+    // 移除已处理的帧
+    usb_can_rx_buffer_.erase(usb_can_rx_buffer_.begin(), usb_can_rx_buffer_.begin() + frame_len);
+
+    return true;
+  }
+
+  return false;
+}
+
 bool DMMototHardwareInterface::send_can_frame(uint32_t can_id, const uint8_t* data, size_t len)
 {
+  // 根据CAN类型路由到对应的发送函数
+  if (can_type_ == USB_CAN)
+  {
+    return send_usb_can_frame(can_id, data, len);
+  }
+
+  // SocketCAN发送
   struct can_frame frame;
   frame.can_id = can_id;
   frame.can_dlc = len;
   memcpy(frame.data, data, len);
 
-  // RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"), 
-  //             "send[%03x]%02x %02x %02x %02x %02x %02x %02x %02x", 
+  // RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"),
+  //             "send[%03x]%02x %02x %02x %02x %02x %02x %02x %02x",
   //             frame.can_id,
   //             frame.data[0], frame.data[1], frame.data[2],
   //             frame.data[3], frame.data[4], frame.data[5],
@@ -425,6 +801,13 @@ bool DMMototHardwareInterface::send_can_frame(uint32_t can_id, const uint8_t* da
 
 bool DMMototHardwareInterface::receive_can_frame(struct can_frame& frame)
 {
+  // 根据CAN类型路由到对应的接收函数
+  if (can_type_ == USB_CAN)
+  {
+    return receive_usb_can_frame(frame);
+  }
+
+  // SocketCAN接收
   ssize_t nbytes = ::read(can_socket_, &frame, sizeof(frame));
   // RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"),
   //             "%d|read[%03x]%02x %02x %02x %02x %02x %02x %02x %02x",nbytes, frame.can_id,
