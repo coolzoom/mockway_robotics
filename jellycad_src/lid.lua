@@ -20,6 +20,7 @@ local function model_lid()
         local y0 = len * math.cos(rad);
         lid:cut(cylinder.new(1.1, 4):pos(x0, y0, 0))
     end
+    lid:fuse(text.new('mockway', 10):x(-20):y(-2):prism(0, 0, (2 + 0.4)))
     return lid:copy()
 end
 
