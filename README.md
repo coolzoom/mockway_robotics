@@ -14,7 +14,57 @@ CAN设备使用[维特USB-CAN模块](https://detail.tmall.com/item.htm?id=598670
 使用`JellyCAD`参数化建模，模型参数在`/jellycad_src`目录下，软件下载地址：[JellyCAD v0.3.10](https://github.com/Jelatine/JellyCAD/releases/tag/v0.3.10)
 
 结构件可3D打印，已上传到[MakerWorld](https://makerworld.com.cn/zh/models/2037149-mockway-kai-yuan-liu-zhou-xie-zuo-ji-jie-bi#profileId-2273199)
+
 [![makerworld](doc/img/makerworld.png)](https://makerworld.com.cn/zh/models/2037149-mockway-kai-yuan-liu-zhou-xie-zuo-ji-jie-bi#profileId-2273199)
+
+## 程序运行
+
+### 电机调试
+
+单个电机运动调试和关节零点标定的界面
+
+```bash
+python tools/motor_gui/motor_gui.py
+```
+
+### 力矩补偿
+
+```bash
+python tools/dynamics_test/realtime_torque_compensation.py
+```
+
+### 运行MoveIt!
+
+1. 创建工作空间
+
+```bash
+mkdir -p ~/mockway_ws/src
+cd ~/mockway_ws/src
+```
+
+2. 克隆mockway_robotics仓库
+
+```bash
+git clone https://github.com/Jelatine/mockway_robotics.git
+```
+
+3. 编译工作空间
+
+```bash
+cd ~/mockway_ws
+colcon build --symlink-install
+```
+4. 配置环境变量
+
+```bash
+source ~/mockway_ws/install/setup.bash
+```
+
+5. 启动程序
+
+```bash
+ros2 launch moveit_mockway_config demo.launch.py
+```
 
 
 ## 物料清单
