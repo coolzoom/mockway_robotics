@@ -42,6 +42,11 @@ python tools/dynamics_test/realtime_torque_compensation.py
 
 ### 运行MoveIt!
 
+建议运行环境：
+
+- Ubuntu 24.04
+- ROS2 Jazzy + MoveIt!
+
 1. 创建工作空间
 
 ```bash
