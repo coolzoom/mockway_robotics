@@ -83,3 +83,7 @@ ros2 launch moveit_mockway_config demo.launch.py
 ## 物料清单
 
 详细的物料清单请查看：[BOM.md](doc/BOM.md)
+
+## 电气连接
+
+![electrical_topology](doc/img/electrical_topology.png)
