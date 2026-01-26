@@ -12,7 +12,7 @@
 
 CAN设备使用[维特USB-CAN模块](https://detail.tmall.com/item.htm?id=598670674373&skuId=4483773298672)，串口波特率921600，CAN总线波特率1M
 
-## 机械结构
+## ⚙️ 机械结构
 
 使用`JellyCAD`参数化建模，模型参数在`/jellycad_src`目录下，软件下载地址：[JellyCAD v0.3.10](https://github.com/Jelatine/JellyCAD/releases/tag/v0.3.10)
 
@@ -20,9 +20,9 @@ CAN设备使用[维特USB-CAN模块](https://detail.tmall.com/item.htm?id=598670
 
 [![makerworld](doc/img/makerworld.png)](https://makerworld.com.cn/zh/models/2037149-mockway-kai-yuan-liu-zhou-xie-zuo-ji-jie-bi#profileId-2273199)
 
-## 程序运行
+## 🚀 程序运行
 
-### 电机调试
+### 🎮 电机调试
 
 单个电机运动调试和关节零点标定的界面
 
@@ -32,7 +32,7 @@ python tools/motor_gui/motor_gui.py
 
 ![motor_gui](doc/img/motor_gui.png)
 
-### 力矩补偿
+### ⚡ 力矩补偿
 
 ```bash
 python tools/dynamics_test/realtime_torque_compensation.py
@@ -40,7 +40,7 @@ python tools/dynamics_test/realtime_torque_compensation.py
 
 ![torque_compensation](doc/img/torque_compensation.png)
 
-### 运行MoveIt!
+### 🦾 运行MoveIt!
 
 建议运行环境：
 
@@ -80,15 +80,15 @@ ros2 launch moveit_mockway_config demo.launch.py
 
 ![moveit_demo](doc/img/moveit_demo.png)
 
-## 物料清单
+## 📦 物料清单
 
 详细的物料清单请查看：[BOM.md](doc/BOM.md)
 
-## 电气连接
+## 🔌 电气连接
 
 ![electrical_topology](doc/img/electrical_topology.png)
 
-## 注意事项
+## ⚠️ 注意事项
 
 **重要提示：力矩模式如果前期准备没做好容易发生飞车（失控）现象，请务必按照以下步骤操作。**
 
