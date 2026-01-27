@@ -45,7 +45,7 @@ ros2 launch moveit_setup_assistant setup_assistant.launch.py
 2. Start Screen
 
 - 1️⃣选择`Create New Moveit Configuration Package`
-- 2️⃣`Browse` 打开 `mockway_robotics/mockway_description/urdfmockway_description.urdf`文件。
+- 2️⃣`Browse` 打开 `mockway_robotics/mockway_description/urdf/mockway_description.urdf`文件。
 - 3️⃣`Load Files`
 
 3. Self-Collisions
