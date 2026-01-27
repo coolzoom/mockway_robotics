@@ -34,4 +34,11 @@ install(
   DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME})
 
+# 安装Python脚本
+install(PROGRAMS
+  scripts/keyboard_joint_jog.py
+  scripts/keyboard_pose.py
+  scripts/keyboard_servo.py
+  DESTINATION lib/${PROJECT_NAME})
+
 ament_package()
