@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Launch file for ArUco marker tracking simulation in Gazebo
+Launch file for ArUco marker tracking simulation in Gazebo (Harmonic)
 """
 
 import os
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, ExecuteProcess
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Command
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -18,7 +18,7 @@ def generate_launch_description():
     pkg_share = FindPackageShare('mockway_moveit_servo').find('mockway_moveit_servo')
 
     # Paths
-    world_file = os.path.join(pkg_share, 'worlds', 'aruco_tracking.world')
+    world_file = os.path.join(pkg_share, 'worlds', 'aruco_tracking.sdf')
     model_path = os.path.join(pkg_share, 'models')
 
     # Declare arguments
@@ -34,25 +34,41 @@ def generate_launch_description():
         description='Size of the ArUco marker in meters'
     )
 
-    # Set Gazebo model path
-    env_vars = {
-        'GAZEBO_MODEL_PATH': model_path + ':' + os.environ.get('GAZEBO_MODEL_PATH', '')
-    }
+    # Set Gazebo resource path for models
+    gz_resource_path = SetEnvironmentVariable(
+        name='GZ_SIM_RESOURCE_PATH',
+        value=model_path + ':' + os.environ.get('GZ_SIM_RESOURCE_PATH', '')
+    )
 
-    # Launch Gazebo
+    # Launch Gazebo Harmonic (new Gazebo)
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             PathJoinSubstitution([
-                FindPackageShare('gazebo_ros'),
+                FindPackageShare('ros_gz_sim'),
                 'launch',
-                'gazebo.launch.py'
+                'gz_sim.launch.py'
             ])
         ]),
         launch_arguments={
-            'world': world_file,
-            'verbose': 'false',
-            'extra_gazebo_args': '--ros-args --params-file ' + os.path.join(pkg_share, 'config', 'gazebo_params.yaml') if os.path.exists(os.path.join(pkg_share, 'config', 'gazebo_params.yaml')) else ''
+            'gz_args': ['-r ', world_file],
         }.items()
+    )
+
+    # Bridge Gazebo topics to ROS 2
+    # Bridge camera image and camera_info from Gazebo to ROS 2
+    gz_bridge = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        name='gz_bridge',
+        arguments=[
+            '/camera@sensor_msgs/msg/Image@gz.msgs.Image',
+            '/camera/camera_info@sensor_msgs/msg/CameraInfo@gz.msgs.CameraInfo',
+            '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
+        ],
+        remappings=[
+            ('/camera', '/camera/image_raw'),
+        ],
+        output='screen'
     )
 
     # Static transform publisher for camera optical frame
@@ -134,8 +150,9 @@ def generate_launch_description():
     return LaunchDescription([
         use_sim_time_arg,
         marker_size_arg,
+        gz_resource_path,
         gazebo,
-        # static_tf_camera_optical,  # Use robot_state_publisher instead
+        gz_bridge,
         robot_state_publisher,
         aruco_tracker_node,
         rviz_node,

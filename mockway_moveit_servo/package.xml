@@ -15,8 +15,11 @@
   <depend>visualization_msgs</depend>
   <depend>cv_bridge</depend>
   <depend>tf2_ros</depend>
-  <depend>gazebo_ros</depend>
   <depend>robot_state_publisher</depend>
+
+  <!-- Gazebo Harmonic simulation (optional) -->
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
 
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
