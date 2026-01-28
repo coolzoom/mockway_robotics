@@ -1,5 +1,7 @@
 # 牧卫机器人
 
+**中文 | [English](README_EN.md)**
+
 开源六轴协作机械臂系统，包含机械结构、电路和软件
 
 [![robotarm_base](doc/img/cover.jpg)](https://www.bilibili.com/video/BV1AxrbBWEjN/)
