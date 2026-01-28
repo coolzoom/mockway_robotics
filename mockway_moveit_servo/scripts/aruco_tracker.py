@@ -53,9 +53,19 @@ class ArUcoTracker(Node):
             self.get_logger().error(f'Unknown ArUco dictionary: {aruco_dict_name}')
             aruco_dict_name = '4X4_50'
 
+        # Handle both old and new OpenCV ArUco API
         self.aruco_dict = cv2.aruco.getPredefinedDictionary(aruco_dict_map[aruco_dict_name])
-        self.aruco_params = cv2.aruco.DetectorParameters()
-        self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
+        try:
+            # OpenCV 4.7+ API
+            self.aruco_params = cv2.aruco.DetectorParameters()
+            self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
+            self.use_new_api = True
+        except AttributeError:
+            # OpenCV 4.6 and earlier API
+            self.aruco_params = cv2.aruco.DetectorParameters_create()
+            self.detector = None
+            self.use_new_api = False
+            self.get_logger().info('Using legacy OpenCV ArUco API')
 
         # Camera parameters
         self.camera_matrix = None
@@ -137,7 +147,11 @@ class ArUcoTracker(Node):
             gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
 
             # Detect ArUco markers
-            corners, ids, rejected = self.detector.detectMarkers(gray)
+            if self.use_new_api:
+                corners, ids, rejected = self.detector.detectMarkers(gray)
+            else:
+                corners, ids, rejected = cv2.aruco.detectMarkers(
+                    gray, self.aruco_dict, parameters=self.aruco_params)
 
             # Draw detected markers
             debug_image = cv_image.copy()

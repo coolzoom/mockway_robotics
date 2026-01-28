@@ -31,7 +31,7 @@ install(
   RUNTIME DESTINATION lib/${PROJECT_NAME})
 
 install(
-  DIRECTORY launch config models worlds docs
+  DIRECTORY launch config models worlds docs urdf
   DESTINATION share/${PROJECT_NAME})
 
 # 安装Python脚本
@@ -40,6 +40,7 @@ install(PROGRAMS
   scripts/keyboard_pose.py
   scripts/keyboard_servo.py
   scripts/aruco_tracker.py
+  scripts/aruco_servo_follower.py
   scripts/generate_aruco_marker.py
   scripts/test_aruco_detection.py
   DESTINATION lib/${PROJECT_NAME})

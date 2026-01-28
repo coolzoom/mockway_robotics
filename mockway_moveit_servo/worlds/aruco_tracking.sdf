@@ -32,6 +32,15 @@
       <direction>-0.5 0.1 -0.9</direction>
     </light>
 
+    <!-- Additional fill light -->
+    <light type="directional" name="fill_light">
+      <cast_shadows>false</cast_shadows>
+      <pose>-5 5 5 0 0 0</pose>
+      <diffuse>0.4 0.4 0.4 1</diffuse>
+      <specular>0.1 0.1 0.1 1</specular>
+      <direction>0.5 -0.5 -0.5</direction>
+    </light>
+
     <!-- Ground Plane -->
     <model name="ground_plane">
       <static>true</static>
@@ -59,11 +68,19 @@
       </link>
     </model>
 
-    <!-- ArUco Marker - simple textured plane -->
+    <!-- ArUco Marker - positioned in front of robot, within reach -->
     <model name="aruco_marker">
-      <static>true</static>
-      <pose>0.5 0 0.5 0 0 3.14159</pose>
+      <static>false</static>
+      <pose>0.35 0.0 0.4 0 0 3.14159</pose>
       <link name="marker_link">
+        <inertial>
+          <mass>0.01</mass>
+          <inertia>
+            <ixx>0.0001</ixx>
+            <iyy>0.0001</iyy>
+            <izz>0.0001</izz>
+          </inertia>
+        </inertial>
         <visual name="visual">
           <geometry>
             <box>
@@ -90,7 +107,7 @@
       </link>
     </model>
 
-    <!-- Camera Model -->
+    <!-- Camera Model - positioned to view both robot and marker -->
     <model name="camera">
       <static>true</static>
       <pose>0 0 0.5 0 0 0</pose>
@@ -103,8 +120,8 @@
             </box>
           </geometry>
           <material>
-            <ambient>0.5 0.5 0.5 1</ambient>
-            <diffuse>0.5 0.5 0.5 1</diffuse>
+            <ambient>0.3 0.3 0.3 1</ambient>
+            <diffuse>0.3 0.3 0.3 1</diffuse>
           </material>
         </visual>
 
@@ -142,10 +159,36 @@
       </link>
     </model>
 
+    <!-- Table for the robot to sit on (optional) -->
+    <model name="table">
+      <static>true</static>
+      <pose>0 0 -0.025 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.6 0.6 0.05</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.6 0.6 0.05</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.4 0.3 0.2 1</ambient>
+            <diffuse>0.4 0.3 0.2 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
     <!-- GUI -->
     <gui fullscreen='0'>
       <camera name='user_camera'>
-        <pose>-1.5 0 1.5 0 0.5 0</pose>
+        <pose>-0.8 0.8 0.8 0 0.4 -0.8</pose>
       </camera>
     </gui>
 
