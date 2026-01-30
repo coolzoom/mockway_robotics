@@ -86,6 +86,8 @@ ros2 launch moveit_mockway_config demo.launch.py
 
 详细的物料清单请查看：[BOM.md](doc/BOM.md)
 
+复刻成本约4.2k（电机≈4k，打印件≈20，USB2CAN≈73，电源≈100，螺丝及工具<40）
+
 ## 🔌 电气连接
 
 ![electrical_topology](doc/img/electrical_topology.png)
