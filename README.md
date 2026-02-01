@@ -66,7 +66,8 @@ git clone https://github.com/Jelatine/mockway_robotics.git
 
 ```bash
 cd ~/mockway_ws
-colcon build --symlink-install
+rosdep install --from-paths src/mockway_robotics/moveit_mockway_config/ src/mockway_robotics/mockway_description/ --ignore-src -r -y
+colcon build --symlink-install --packages-select moveit_mockway_config mockway_description
 ```
 4. 配置环境变量
 
