@@ -19,6 +19,8 @@
 | `内六角螺丝钉M3*10`  | 24   | 12个上臂，12个前臂<br>https://detail.tmall.com/item.htm?id=587639753812&skuId=4763651596408 |
 | `外六角螺丝M3*8`     | 30   | 30(5个壳各6个) 连接法兰与壳<br>https://detail.tmall.com/item.htm?id=560233170109&skuId=5115239739933 |
 | `自攻螺丝M2*5`       | 24   | 24(6个壳各4个) 固定盖子<br/>https://detail.tmall.com/item.htm?id=635097264798&skuId=5800678634554 |
+| `沉头十字螺丝M3*8`   | 36   | 36(6个壳各6个) 壳与电机定子连接<br/>https://detail.tmall.com/item.htm?id=635369222178&skuId=5742164075947 |
+| `沉头十字螺丝M3*12`  | 36   | 30(5个法兰各6个)+6(末端) 法兰/末端与电机转子连接<br/>https://detail.tmall.com/item.htm?id=635369222178&skuId=5742164075833 |
 ## 工具
 
 | 材料              | 数量 | 备注                                                         |
