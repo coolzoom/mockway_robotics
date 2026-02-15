@@ -42,6 +42,8 @@ python tools/dynamics_test/realtime_torque_compensation.py
 
 ![torque_compensation](doc/img/torque_compensation.png)
 
+> 运行前请阅读下面 `⚠️ 注意事项`
+
 ### 🦾 运行MoveIt!
 
 建议运行环境：
@@ -108,6 +110,8 @@ ros2 launch moveit_mockway_config demo.launch.py
 ```bash
 python tools/motor_gui/motor_gui.py
 ```
+
+![calibrate_joint](doc/img/calibrate_joint.jpeg)
 
 ### 3. 力矩值验证
 
