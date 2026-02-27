@@ -8,24 +8,12 @@
   <license>TODO: License declaration</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <!-- Dependencies for ArUco tracking -->
   <depend>rclpy</depend>
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
-  <depend>visualization_msgs</depend>
-  <depend>cv_bridge</depend>
   <depend>tf2_ros</depend>
   <depend>robot_state_publisher</depend>
   <depend>moveit_servo</depend>
-
-  <!-- Gazebo Harmonic simulation (optional) -->
-  <exec_depend>ros_gz_sim</exec_depend>
-  <exec_depend>ros_gz_bridge</exec_depend>
-  <exec_depend>gz_ros2_control</exec_depend>
-
-  <exec_depend>python3-opencv</exec_depend>
-  <exec_depend>python3-numpy</exec_depend>
-  <exec_depend>python3-tf-transformations</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
