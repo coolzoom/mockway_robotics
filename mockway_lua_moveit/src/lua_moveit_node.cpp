@@ -86,18 +86,29 @@ public:
   }
 
   // ── 初始化 MoveGroupInterface（需要 executor 已在运行）────────────────────
-  void init_move_group()
+  // 返回 true 表示就绪，false 表示初始化失败（move_group_ 保持 nullptr）
+  bool init_move_group()
   {
     std::lock_guard<std::mutex> lk(mg_mutex_);
-    if (move_group_) return;
+    if (move_group_) return true;
+    if (mg_failed_)  return false;
 
-    move_group_ = std::make_shared<moveit::planning_interface::MoveGroupInterface>(
-      shared_from_this(), planning_group_);
-    move_group_->setMaxVelocityScalingFactor(0.3);
-    move_group_->setMaxAccelerationScalingFactor(0.1);
-    move_group_->setPlanningTime(5.0);
-    RCLCPP_INFO(get_logger(), "MoveGroupInterface 就绪，规划参考系: %s",
-                move_group_->getPlanningFrame().c_str());
+    try {
+      move_group_ = std::make_shared<moveit::planning_interface::MoveGroupInterface>(
+        shared_from_this(), planning_group_);
+      move_group_->setMaxVelocityScalingFactor(0.3);
+      move_group_->setMaxAccelerationScalingFactor(0.1);
+      move_group_->setPlanningTime(5.0);
+      RCLCPP_INFO(get_logger(), "MoveGroupInterface 就绪，规划参考系: %s",
+                  move_group_->getPlanningFrame().c_str());
+      return true;
+    } catch (const std::exception& e) {
+      RCLCPP_ERROR(get_logger(),
+        "MoveGroupInterface 初始化失败（move_group 未运行？）: %s", e.what());
+      move_group_ = nullptr;
+      mg_failed_  = true;
+      return false;
+    }
   }
 
   // ── 运行 Lua 脚本 ─────────────────────────────────────────────────────────
@@ -135,6 +146,7 @@ private:
 
   std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;
   std::mutex mg_mutex_;
+  bool mg_failed_ = false;
 
   sol::state lua_;
 
@@ -246,7 +258,7 @@ private:
      *   返回 bool
      */
     R.set_function("move_to_named", [this](const std::string& name) -> bool {
-      init_move_group();
+      if (!init_move_group()) return false;
       std::lock_guard<std::mutex> lk(mg_mutex_);
       move_group_->setNamedTarget(name);
       auto ret = move_group_->move();
@@ -262,7 +274,7 @@ private:
      *   返回 bool
      */
     R.set_function("move_to_joints", [this](sol::table pos) -> bool {
-      init_move_group();
+      if (!init_move_group()) return false;
       std::vector<double> target(6, 0.0);
       for (int i = 1; i <= 6; ++i)
         if (pos[i].valid()) target[i - 1] = pos[i].get<double>();
@@ -283,7 +295,7 @@ private:
       [this](double x, double y, double z,
              double qx, double qy, double qz, double qw) -> bool
       {
-        init_move_group();
+        if (!init_move_group()) return false;
         geometry_msgs::msg::Pose p;
         p.position.x = x; p.position.y = y; p.position.z = z;
         p.orientation.x = qx; p.orientation.y = qy;
@@ -305,7 +317,7 @@ private:
       [this](double x, double y, double z,
              double roll, double pitch, double yaw) -> bool
       {
-        init_move_group();
+        if (!init_move_group()) return false;
         Eigen::Quaterniond q =
           Eigen::AngleAxisd(yaw,   Eigen::Vector3d::UnitZ()) *
           Eigen::AngleAxisd(pitch, Eigen::Vector3d::UnitY()) *
@@ -338,7 +350,7 @@ private:
              sol::optional<double> step_opt,
              sol::optional<double> min_frac_opt) -> bool
       {
-        init_move_group();
+        if (!init_move_group()) return false;
         double step     = step_opt.value_or(0.01);
         double min_frac = min_frac_opt.value_or(0.9);
 
@@ -379,7 +391,7 @@ private:
              double roll, double pitch, double yaw,
              sol::optional<double> step_opt) -> bool
       {
-        init_move_group();
+        if (!init_move_group()) return false;
         Eigen::Quaterniond q =
           Eigen::AngleAxisd(yaw,   Eigen::Vector3d::UnitZ()) *
           Eigen::AngleAxisd(pitch, Eigen::Vector3d::UnitY()) *
@@ -418,7 +430,7 @@ private:
              double drx, double dry, double drz,
              sol::optional<double> step_opt) -> bool
       {
-        init_move_group();
+        if (!init_move_group()) return false;
         double step = step_opt.value_or(0.01);
 
         geometry_msgs::msg::PoseStamped cur;
@@ -464,25 +476,25 @@ private:
     // ══════════════════════════════════════════════════════════════════════
 
     R.set_function("set_velocity_scaling", [this](double f) {
-      init_move_group();
+      if (!init_move_group()) return;
       std::lock_guard<std::mutex> lk(mg_mutex_);
       move_group_->setMaxVelocityScalingFactor(std::clamp(f, 0.01, 1.0));
     });
 
     R.set_function("set_acceleration_scaling", [this](double f) {
-      init_move_group();
+      if (!init_move_group()) return;
       std::lock_guard<std::mutex> lk(mg_mutex_);
       move_group_->setMaxAccelerationScalingFactor(std::clamp(f, 0.01, 1.0));
     });
 
     R.set_function("set_planning_time", [this](double t) {
-      init_move_group();
+      if (!init_move_group()) return;
       std::lock_guard<std::mutex> lk(mg_mutex_);
       move_group_->setPlanningTime(t);
     });
 
     R.set_function("set_planner", [this](const std::string& planner_id) {
-      init_move_group();
+      if (!init_move_group()) return;
       std::lock_guard<std::mutex> lk(mg_mutex_);
       move_group_->setPlannerId(planner_id);
       RCLCPP_INFO(get_logger(), "规划器切换为: %s", planner_id.c_str());
@@ -497,7 +509,7 @@ private:
      *   返回 table {j1, j2, j3, j4, j5, j6}，单位 rad
      */
     R.set_function("get_joint_positions", [this]() -> sol::table {
-      init_move_group();
+      if (!init_move_group()) return lua_.create_table();
       std::lock_guard<std::mutex> lk(mg_mutex_);
       auto vals = move_group_->getCurrentJointValues();
       sol::table t = lua_.create_table();
@@ -510,7 +522,7 @@ private:
      *   返回 table {x, y, z, qx, qy, qz, qw}
      */
     R.set_function("get_current_pose", [this]() -> sol::table {
-      init_move_group();
+      if (!init_move_group()) return lua_.create_table();
       std::lock_guard<std::mutex> lk(mg_mutex_);
       auto ps = move_group_->getCurrentPose();
       auto& p = ps.pose;
@@ -526,7 +538,7 @@ private:
      *   返回 table {roll, pitch, yaw}，单位 rad
      */
     R.set_function("get_current_rpy", [this]() -> sol::table {
-      init_move_group();
+      if (!init_move_group()) return lua_.create_table();
       std::lock_guard<std::mutex> lk(mg_mutex_);
       auto ps = move_group_->getCurrentPose();
       Eigen::Quaterniond q;
