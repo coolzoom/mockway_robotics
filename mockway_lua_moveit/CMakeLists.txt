@@ -36,15 +36,8 @@ if(NOT LUA_FOUND)
 endif()
 message(STATUS "Found Lua ${LUA_VERSION_STRING}: ${LUA_LIBRARIES}")
 
-# ── sol2 (header-only，FetchContent 自动拉取) ──────────────────────────────
-include(FetchContent)
-FetchContent_Declare(
-  sol2
-  GIT_REPOSITORY https://github.com/ThePhD/sol2.git
-  GIT_TAG        v3.3.0
-  GIT_SHALLOW    TRUE
-)
-FetchContent_MakeAvailable(sol2)
+# ── sol2 (via ros-jazzy-sol-vendor) ──────────────────────────────────────
+find_package(sol_vendor REQUIRED)
 
 # ── 可执行目标 ───────────────────────────────────────────────────────────────
 add_executable(lua_moveit_node src/lua_moveit_node.cpp)
@@ -55,11 +48,11 @@ target_include_directories(lua_moveit_node PRIVATE
 
 target_link_libraries(lua_moveit_node
   ${LUA_LIBRARIES}
-  sol2
 )
 
 ament_target_dependencies(lua_moveit_node
   ${THIS_PACKAGE_INCLUDE_DEPENDS}
+  sol_vendor
 )
 
 # ── 安装 ─────────────────────────────────────────────────────────────────────
