@@ -68,8 +68,8 @@ git clone https://github.com/Jelatine/mockway_robotics.git
 
 ```bash
 cd ~/mockway_ws
-rosdep install --from-paths src/mockway_robotics/moveit_mockway_config/ src/mockway_robotics/mockway_description/ --ignore-src -r -y
-colcon build --symlink-install --packages-select moveit_mockway_config mockway_description
+rosdep install --from-paths src/mockway_robotics/moveit_mockway_config/ --ignore-src -r -y
+colcon build --symlink-install --packages-select moveit_mockway_config
 ```
 4. 配置环境变量
 
@@ -84,6 +84,30 @@ ros2 launch moveit_mockway_config demo.launch.py
 ```
 
 ![moveit_demo](doc/img/moveit_demo.png)
+
+### 🖥️ 完整程序
+
+1. 安装`lua`
+
+```bash
+sudo apt install liblua5.4-dev
+```
+
+2. 构建`mockway_bringup`
+
+```bash
+cd ~/mockway_ws
+rosdep install --from-paths src/mockway_robotics/mockway_bringup/ --ignore-src -r -y
+colcon build --symlink-install --packages-select mockway_bringup
+```
+3. 启动程序
+
+```bash
+# 启动 move_group + servo
+ros2 launch mockway_bringup mockway.launch.py
+# 测试PTP运动
+ros2 launch mockway_lua_moveit lua_moveit.launch.py
+```
 
 ## 📦 物料清单
 
