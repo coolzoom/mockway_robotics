@@ -629,7 +629,8 @@ int main(int argc, char** argv)
   if (argc >= 2 && argv[1][0] != '-') {
     script_path = argv[1];
   } else {
-    node->declare_parameter("script_path", std::string(""));
+    if (!node->has_parameter("script_path"))
+      node->declare_parameter("script_path", std::string(""));
     script_path = node->get_parameter("script_path").as_string();
   }
 
