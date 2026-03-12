@@ -10,7 +10,7 @@ servo_with_moveit.launch.py
   ros2 launch mockway_moveit_servo servo_with_moveit.launch.py
 
 可选参数：
-  use_rviz (bool, default true)  — 是否显示 RViz
+  with_rviz (bool, default true)  — 是否显示 RViz
 """
 
 import os
@@ -37,8 +37,10 @@ def generate_launch_description():
     )
 
     # ── 启动参数 ─────────────────────────────────────────────────────────────
+    # 注意：不使用 "use_rviz" 命名，避免与 demo.launch.py 内部同名参数冲突
+    # （IncludeLaunchDescription 的 launch_arguments 会全局覆盖同名 LaunchConfiguration）
     use_rviz_arg = DeclareLaunchArgument(
-        "use_rviz", default_value="true", description="是否启动 RViz"
+        "with_rviz", default_value="true", description="是否启动 RViz"
     )
 
     # ── demo.launch.py（move_group + rsp + ros2_control + controllers）───────
@@ -93,7 +95,7 @@ def generate_launch_description():
             moveit_config.robot_description,
             moveit_config.robot_description_semantic,
         ],
-        condition=IfCondition(LaunchConfiguration("use_rviz")),
+        condition=IfCondition(LaunchConfiguration("with_rviz")),
     )
 
     return launch.LaunchDescription(
