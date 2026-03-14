@@ -40,9 +40,13 @@ message(STATUS "Found Lua ${LUA_VERSION_STRING}: ${LUA_LIBRARIES}")
 find_package(sol_vendor REQUIRED)
 
 # ── 可执行目标 ───────────────────────────────────────────────────────────────
-add_executable(lua_moveit_node src/lua_moveit_node.cpp)
+add_executable(lua_moveit_node
+  src/main.cpp
+  src/lua_moveit_node.cpp
+)
 
 target_include_directories(lua_moveit_node PRIVATE
+  include
   ${LUA_INCLUDE_DIR}
 )
 
@@ -59,6 +63,11 @@ ament_target_dependencies(lua_moveit_node
 install(
   TARGETS lua_moveit_node
   RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY include/
+  DESTINATION include/
 )
 
 install(
