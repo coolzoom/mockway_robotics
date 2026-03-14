@@ -13,8 +13,10 @@
  */
 
 #include "mockway_lua_moveit/lua_moveit_node.hpp"
+#include "mockway_lua_moveit/http_server.hpp"
 
 #include <rclcpp/executors/single_threaded_executor.hpp>
+#include <chrono>
 #include <thread>
 
 int main(int argc, char** argv)
@@ -27,6 +29,14 @@ int main(int argc, char** argv)
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
   std::thread spin_thread([&executor]() { executor.spin(); });
+
+  // HTTP 服务器（端口由 ROS 参数 http_port 控制，默认 8080）
+  if (!node->has_parameter("http_port"))
+    node->declare_parameter("http_port", 8080);
+  const int http_port = node->get_parameter("http_port").as_int();
+
+  HttpServer http_server(node, http_port);
+  http_server.start();
 
   // 获取执行源
   std::string script_path;
@@ -48,11 +58,15 @@ int main(int argc, char** argv)
   } else if (!script_code.empty()) {
     ret = node->run_string(script_code);
   } else {
-    RCLCPP_ERROR(node->get_logger(),
-      "请通过命令行参数、ROS 参数 'script_path' 或 'script_code' 指定要执行的 Lua 内容");
-    ret = -1;
+    // 未指定脚本 — HTTP 服务器模式：保持运行直到 Ctrl+C
+    RCLCPP_INFO(node->get_logger(),
+      "HTTP 服务器模式（端口 %d）：未指定脚本，等待前端请求...", http_port);
+    while (rclcpp::ok()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
   }
 
+  http_server.stop();
   executor.cancel();
   spin_thread.join();
   rclcpp::shutdown();

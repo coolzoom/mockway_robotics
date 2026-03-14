@@ -20,6 +20,7 @@
 #include <chrono>
 #include <filesystem>
 #include <future>
+#include <sstream>
 #include <thread>
 
 using namespace std::chrono_literals;
@@ -89,6 +90,7 @@ int LuaMoveItNode::run_script(const std::string& script_path)
     return -1;
   }
 
+  std::lock_guard<std::mutex> lua_lk(lua_mutex_);
   setup_lua_api();
 
   std::filesystem::path p(script_path);
@@ -112,6 +114,7 @@ int LuaMoveItNode::run_string(const std::string& code)
     return -1;
   }
 
+  std::lock_guard<std::mutex> lua_lk(lua_mutex_);
   setup_lua_api();
 
   RCLCPP_INFO(get_logger(), "执行 Lua 字符串（%zu 字节）", code.size());
@@ -122,6 +125,69 @@ int LuaMoveItNode::run_string(const std::string& code)
     return -1;
   }
   return 0;
+}
+
+std::pair<bool, std::string> LuaMoveItNode::run_string_captured(const std::string& code)
+{
+  if (code.empty()) return {false, "Empty script"};
+
+  std::lock_guard<std::mutex> lua_lk(lua_mutex_);
+  setup_lua_api();
+
+  // 重定向 print 到字符串缓冲区
+  std::string captured;
+  lua_["print"] = [&captured](sol::variadic_args va) {
+    std::ostringstream oss;
+    bool first = true;
+    for (const auto& v : va) {
+      if (!first) oss << "\t";
+      first = false;
+      switch (v.get_type()) {
+        case sol::type::number:
+          if (v.is<int64_t>()) oss << v.as<int64_t>();
+          else                 oss << v.as<double>();
+          break;
+        case sol::type::boolean: oss << (v.as<bool>() ? "true" : "false"); break;
+        case sol::type::string:  oss << v.as<std::string>();                break;
+        case sol::type::nil:     oss << "nil";                              break;
+        default: oss << "[" << sol::type_name(v.lua_state(), v.get_type()) << "]";
+      }
+    }
+    oss << "\n";
+    captured += oss.str();
+  };
+
+  RCLCPP_INFO(get_logger(), "HTTP 执行 Lua 字符串（%zu 字节）", code.size());
+  try {
+    lua_.script(code);
+    return {true, captured};
+  } catch (const sol::error& e) {
+    RCLCPP_ERROR(get_logger(), "Lua 错误: %s", e.what());
+    return {false, std::string(e.what())};
+  }
+}
+
+std::vector<double> LuaMoveItNode::get_joint_positions_raw()
+{
+  if (!init_move_group()) return {};
+  std::lock_guard<std::mutex> lk(mg_mutex_);
+  if (!move_group_) return {};
+  return move_group_->getCurrentJointValues();
+}
+
+std::vector<double> LuaMoveItNode::get_end_pose_rpy_raw()
+{
+  if (!init_move_group()) return {};
+  std::lock_guard<std::mutex> lk(mg_mutex_);
+  if (!move_group_) return {};
+  auto ps = move_group_->getCurrentPose();
+  Eigen::Quaterniond q;
+  tf2::fromMsg(ps.pose.orientation, q);
+  auto euler = q.toRotationMatrix().eulerAngles(2, 1, 0); // ZYX -> yaw,pitch,roll
+  return {
+    ps.pose.position.x, ps.pose.position.y, ps.pose.position.z,
+    euler[2], euler[1], euler[0]  // roll, pitch, yaw
+  };
 }
 
 // ─────────────────────────── 私有方法 ────────────────────────────────────────
@@ -521,6 +587,37 @@ void LuaMoveItNode::setup_lua_api()
   lua_.script(R"(
     function deg2rad(d) return d * math.pi / 180.0 end
     function rad2deg(r) return r * 180.0 / math.pi end
+
+    -- 简化全局 API（与 UI 脚本编辑器文档一致）
+    function GetJoints()
+      local j = robot.get_joint_positions()
+      if not j then return nil end
+      local deg = {}
+      for i = 1, #j do deg[i] = rad2deg(j[i]) end
+      return deg
+    end
+
+    function GetPose()
+      local p   = robot.get_current_pose()
+      local rpy = robot.get_current_rpy()
+      if not p then return nil end
+      return {p.x, p.y, p.z, rpy.roll, rpy.pitch, rpy.yaw}
+    end
+
+    function PTP(joints)
+      return robot.move_to_joints(joints) and 0 or -1
+    end
+
+    function Lin(pose)
+      return robot.move_linear_rpy(
+        pose[1], pose[2], pose[3],
+        pose[4], pose[5], pose[6]
+      ) and 0 or -1
+    end
+
+    function Sleep(ms)
+      robot.sleep(ms / 1000.0)
+    end
   )");
 }
 

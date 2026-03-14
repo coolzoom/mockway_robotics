@@ -28,6 +28,19 @@ public:
   // 运行 Lua 代码字符串，返回 0 成功，-1 失败
   int run_string(const std::string& code);
 
+  // 运行 Lua 代码字符串并捕获 print 输出，供 HTTP 接口使用
+  // 返回 {success, output_or_error_message}
+  std::pair<bool, std::string> run_string_captured(const std::string& code);
+
+  // 获取当前关节角度（rad），move_group 未就绪时返回空
+  std::vector<double> get_joint_positions_raw();
+
+  // 获取末端位姿 {x, y, z, roll, pitch, yaw}（m / rad），未就绪时返回空
+  std::vector<double> get_end_pose_rpy_raw();
+
+  // 全局速度比例（0~100）
+  double get_global_ratio() const { return global_ratio_; }
+
 private:
   std::string planning_group_, ee_frame_, base_frame_;
 
@@ -40,6 +53,8 @@ private:
   bool mg_failed_ = false;
 
   sol::state lua_;
+  std::mutex lua_mutex_;  // 串行化所有 Lua 状态访问
+  double global_ratio_ = 30.0;
 
   std::string declare_or_get(const std::string& name, const std::string& default_val);
   void setup_lua_api();
