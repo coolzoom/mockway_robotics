@@ -1,18 +1,23 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
-    <xacro:macro name="mockway_description_ros2_control" params="name initial_positions_file">
+    <xacro:macro name="mockway_description_ros2_control" params="name initial_positions_file use_mock_hardware:=false">
         <xacro:property name="initial_positions" value="${xacro.load_yaml(initial_positions_file)['initial_positions']}"/>
 
         <ros2_control name="${name}" type="system">
             <hardware>
-                <!-- <plugin>mock_components/GenericSystem</plugin> -->
-                <!-- DM Motor Hardware Interface for real hardware -->
-                <plugin>dmmotor_hardware_interface/DMMototHardwareInterface</plugin>
-                <!-- CAN interface configuration -->
-                <!-- <param name="can_interface">can0</param> -->
-                <param name="can_type">usb_can</param>
-                <param name="can_interface">/dev/ttyUSB0</param>
-                <param name="serial_baudrate">921600</param>
+                <xacro:if value="${use_mock_hardware}">
+                    <!-- Mock hardware for simulation / testing -->
+                    <plugin>mock_components/GenericSystem</plugin>
+                </xacro:if>
+                <xacro:unless value="${use_mock_hardware}">
+                    <!-- DM Motor Hardware Interface for real hardware -->
+                    <plugin>dmmotor_hardware_interface/DMMototHardwareInterface</plugin>
+                    <!-- CAN interface configuration -->
+                    <!-- <param name="can_interface">can0</param> -->
+                    <param name="can_type">usb_can</param>
+                    <param name="can_interface">/dev/ttyUSB0</param>
+                    <param name="serial_baudrate">921600</param>
+                </xacro:unless>
             </hardware>
             <!-- Joint 1: DM-J4310-2EC -->
             <joint name="joint1">

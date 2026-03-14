@@ -42,6 +42,11 @@ def generate_launch_description():
     use_rviz_arg = DeclareLaunchArgument(
         "with_rviz", default_value="true", description="是否启动 RViz"
     )
+    use_mock_hardware_arg = DeclareLaunchArgument(
+        "use_mock_hardware",
+        default_value="false",
+        description="使用 mock_components/GenericSystem 替代真实硬件（dmmotor_hardware_interface/DMMototHardwareInterface）",
+    )
 
     # ── demo.launch.py（move_group + rsp + ros2_control + controllers）────────
     demo_launch = IncludeLaunchDescription(
@@ -52,7 +57,10 @@ def generate_launch_description():
                 "demo.launch.py",
             )
         ),
-        launch_arguments={"use_rviz": "false"}.items(),
+        launch_arguments={
+            "use_rviz": "false",
+            "use_mock_hardware": LaunchConfiguration("use_mock_hardware"),
+        }.items(),
     )
 
     # ── Servo 参数 ────────────────────────────────────────────────────────────
@@ -101,6 +109,7 @@ def generate_launch_description():
     return launch.LaunchDescription(
         [
             use_rviz_arg,
+            use_mock_hardware_arg,
             demo_launch,
             servo_node,
             rviz_node,

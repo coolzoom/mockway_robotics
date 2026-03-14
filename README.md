@@ -103,7 +103,7 @@ colcon build --symlink-install --packages-select mockway_bringup
 3. 启动程序
 
 ```bash
-# 启动 move_group + servo
+# 启动 move_group + servo ,仿真：use_mock_hardware:=true
 ros2 launch mockway_bringup mockway.launch.py
 # 测试PTP运动
 ros2 launch mockway_lua_moveit lua_moveit.launch.py
