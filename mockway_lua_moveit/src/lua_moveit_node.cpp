@@ -13,8 +13,10 @@
 
 #include <moveit/planning_scene_interface/planning_scene_interface.hpp>
 #include <geometry_msgs/msg/pose.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
+#include <tf2/exceptions.h>
 #include <Eigen/Geometry>
 
 #include <chrono>
@@ -53,6 +55,19 @@ LuaMoveItNode::LuaMoveItNode()
 
   servo_mode_client_ = create_client<moveit_msgs::srv::ServoCommandType>(
     "/servo_node/switch_command_type");
+
+  // ── 订阅关节状态 ──────────────────────────────────────────────────────────
+  joint_state_sub_ = create_subscription<sensor_msgs::msg::JointState>(
+    "/joint_states", rclcpp::SensorDataQoS(),
+    [this](const sensor_msgs::msg::JointState::SharedPtr msg) {
+      std::lock_guard<std::mutex> lk(joint_cache_mutex_);
+      cached_joint_names_     = msg->name;
+      cached_joint_positions_ = msg->position;
+    });
+
+  // ── TF2 缓冲区（用于末端位姿查询） ──────────────────────────────────────
+  tf_buffer_   = std::make_shared<tf2_ros::Buffer>(get_clock());
+  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_, this);
 
   RCLCPP_INFO(get_logger(), "LuaMoveItNode 初始化完成，planning_group=%s",
               planning_group_.c_str());
@@ -169,25 +184,43 @@ std::pair<bool, std::string> LuaMoveItNode::run_string_captured(const std::strin
 
 std::vector<double> LuaMoveItNode::get_joint_positions_raw()
 {
-  if (!init_move_group()) return {};
-  std::lock_guard<std::mutex> lk(mg_mutex_);
-  if (!move_group_) return {};
-  return move_group_->getCurrentJointValues();
+  std::lock_guard<std::mutex> lk(joint_cache_mutex_);
+  if (cached_joint_positions_.empty()) return {};
+
+  // 按 joint1..joint6 顺序返回
+  std::vector<double> result(defaults::JOINT_NAMES.size(), 0.0);
+  for (size_t i = 0; i < defaults::JOINT_NAMES.size(); ++i) {
+    for (size_t j = 0; j < cached_joint_names_.size(); ++j) {
+      if (cached_joint_names_[j] == defaults::JOINT_NAMES[i]) {
+        result[i] = cached_joint_positions_[j];
+        break;
+      }
+    }
+  }
+  return result;
 }
 
 std::vector<double> LuaMoveItNode::get_end_pose_rpy_raw()
 {
-  if (!init_move_group()) return {};
-  std::lock_guard<std::mutex> lk(mg_mutex_);
-  if (!move_group_) return {};
-  auto ps = move_group_->getCurrentPose();
-  Eigen::Quaterniond q;
-  tf2::fromMsg(ps.pose.orientation, q);
-  auto euler = q.toRotationMatrix().eulerAngles(2, 1, 0); // ZYX -> yaw,pitch,roll
-  return {
-    ps.pose.position.x, ps.pose.position.y, ps.pose.position.z,
-    euler[2], euler[1], euler[0]  // roll, pitch, yaw
-  };
+  try {
+    auto tf = tf_buffer_->lookupTransform(base_frame_, ee_frame_, tf2::TimePointZero);
+    Eigen::Quaterniond q(
+      tf.transform.rotation.w,
+      tf.transform.rotation.x,
+      tf.transform.rotation.y,
+      tf.transform.rotation.z);
+    auto euler = q.toRotationMatrix().eulerAngles(2, 1, 0); // ZYX -> yaw, pitch, roll
+    return {
+      tf.transform.translation.x,
+      tf.transform.translation.y,
+      tf.transform.translation.z,
+      euler[2], euler[1], euler[0]  // roll, pitch, yaw
+    };
+  } catch (const tf2::TransformException& e) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+      "TF 查询失败 (%s -> %s): %s", base_frame_.c_str(), ee_frame_.c_str(), e.what());
+    return {};
+  }
 }
 
 // ─────────────────────────── 私有方法 ────────────────────────────────────────

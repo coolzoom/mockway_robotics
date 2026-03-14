@@ -8,6 +8,9 @@
 #include <moveit_msgs/srv/servo_command_type.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <control_msgs/msg/joint_jog.hpp>
+#include <sensor_msgs/msg/joint_state.hpp>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 
 #include <mutex>
 #include <string>
@@ -32,10 +35,10 @@ public:
   // 返回 {success, output_or_error_message}
   std::pair<bool, std::string> run_string_captured(const std::string& code);
 
-  // 获取当前关节角度（rad），move_group 未就绪时返回空
+  // 获取当前关节角度（rad），订阅缓存未就绪时返回空
   std::vector<double> get_joint_positions_raw();
 
-  // 获取末端位姿 {x, y, z, roll, pitch, yaw}（m / rad），未就绪时返回空
+  // 获取末端位姿 {x, y, z, roll, pitch, yaw}（m / rad），TF 查询失败时返回空
   std::vector<double> get_end_pose_rpy_raw();
 
   // 全局速度比例（0~100）
@@ -47,6 +50,14 @@ private:
   rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr twist_pub_;
   rclcpp::Publisher<control_msgs::msg::JointJog>::SharedPtr      joint_pub_;
   rclcpp::Client<moveit_msgs::srv::ServoCommandType>::SharedPtr  servo_mode_client_;
+
+  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
+  std::vector<double> cached_joint_positions_;
+  std::vector<std::string> cached_joint_names_;
+  mutable std::mutex joint_cache_mutex_;
+
+  std::shared_ptr<tf2_ros::Buffer>            tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
   std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;
   std::mutex mg_mutex_;
