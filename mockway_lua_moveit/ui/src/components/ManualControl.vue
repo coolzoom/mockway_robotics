@@ -84,7 +84,7 @@ function handlePress(index, direction) {
       }
     }
     sendJogCmd()
-    jogTimer = setInterval(sendJogCmd, 200)
+    jogTimer = setInterval(sendJogCmd, 50)
   } else {
     const dist = inchDistance.value
     if (space.value === 'joint') {
