@@ -50,6 +50,69 @@ ros2 launch mockway_lua_moveit lua_moveit.launch.py script_path:=/path/to/my_scr
 
 ---
 
+## curl 调用（HTTP API）
+
+节点启动后会内置 HTTP 服务器，可通过 `POST /api/lua` 接口从命令行直接发送 Lua 脚本，无需重启节点。
+
+### 基本用法
+
+```bash
+# 执行单行脚本
+curl -s -X POST http://localhost:8080/api/lua \
+  -H "Content-Type: application/json" \
+  -d '{"script":"robot.log(\"hello\")"}'
+
+# 响应示例
+# {"success":true,"message":"Script executed successfully","output":""}
+```
+
+### 执行多行脚本
+
+```bash
+curl -s -X POST http://localhost:8080/api/lua \
+  -H "Content-Type: application/json" \
+  -d '{
+    "script": "robot.set_velocity_scaling(0.3)\nrobot.move_to_named(\"home\")"
+  }'
+```
+
+### 从 .lua 文件执行
+
+```bash
+# 需要安装 jq（sudo apt install jq）
+curl -s -X POST http://localhost:8080/api/lua \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --rawfile s /path/to/my_script.lua '{script:$s}')"
+```
+
+### 定义 Shell 快捷函数
+
+在 `~/.bashrc` 中添加以下函数，之后可直接调用：
+
+```bash
+lua_exec() {
+  curl -s -X POST http://localhost:8080/api/lua \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n --arg s "$1" '{script:$s}')" | jq .
+}
+
+lua_file() {
+  curl -s -X POST http://localhost:8080/api/lua \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n --rawfile s "$1" '{script:$s}')" | jq .
+}
+```
+
+使用示例：
+
+```bash
+lua_exec 'robot.move_to_named("home")'
+lua_exec 'print(robot.get_joint_positions())'
+lua_file /path/to/my_script.lua
+```
+
+---
+
 ## Lua API 参考
 
 在 Lua 脚本中，机器人接口通过全局表 `robot` 访问。
