@@ -214,10 +214,12 @@ std::vector<double> LuaMoveItNode::get_end_pose_rpy_raw()
       tf.transform.rotation.z);
     auto euler = q.toRotationMatrix().eulerAngles(2, 1, 0); // ZYX -> yaw, pitch, roll
     return {
-      tf.transform.translation.x,
-      tf.transform.translation.y,
-      tf.transform.translation.z,
-      euler[2], euler[1], euler[0]  // roll, pitch, yaw
+      tf.transform.translation.x * 1000.0,  // m -> mm
+      tf.transform.translation.y * 1000.0,  // m -> mm
+      tf.transform.translation.z * 1000.0,  // m -> mm
+      euler[2] * 180.0 / M_PI,  // roll  rad -> deg
+      euler[1] * 180.0 / M_PI,  // pitch rad -> deg
+      euler[0] * 180.0 / M_PI   // yaw   rad -> deg
     };
   } catch (const tf2::TransformException& e) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
