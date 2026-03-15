@@ -171,8 +171,11 @@ std::pair<bool, std::string> LuaMoveItNode::run_string_captured(const std::strin
     oss << "\n";
     captured += oss.str();
   };
-
+#if 0
   RCLCPP_INFO(get_logger(), "HTTP 执行 Lua 字符串（%zu 字节）", code.size());
+#else
+  RCLCPP_INFO(get_logger(), "HTTP 执行 Lua 字符串\n%s", code.c_str());
+#endif
   try {
     lua_.script(code);
     return {true, captured};
