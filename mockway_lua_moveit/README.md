@@ -1,6 +1,6 @@
 # mockway_lua_moveit
 
-使用 [sol2](https://github.com/ThePhD/sol2) 将 MoveIt 和 MoveIt Servo 封装为 Lua API，通过执行 Lua 脚本控制机械臂。
+使用 [sol2](https://github.com/ThePhD/sol2) 将 MoveIt 和 MoveIt Servo 封装为 Lua 全局函数，通过执行 Lua 脚本控制机械臂。
 
 ## 单位约定
 
@@ -12,6 +12,7 @@
 > | 角度（关节、RPY、旋转增量） | **deg**（度） |
 > | 线速度（Servo） | **mm/s** |
 > | 角速度（Servo） | **deg/s** |
+> | 暂停时间（Sleep） | **ms**（毫秒） |
 > | 插值步长（直线运动） | **mm**，默认 10 |
 
 ## 前置条件
@@ -60,7 +61,7 @@ ros2 launch mockway_lua_moveit lua_moveit.launch.py script_path:=/path/to/my_scr
 # 执行单行脚本
 curl -s -X POST http://localhost:8080/api/lua \
   -H "Content-Type: application/json" \
-  -d '{"script":"robot.log(\"hello\")"}'
+  -d '{"script":"Log(\"hello\")"}'
 
 # 响应示例
 # {"success":true,"message":"Script executed successfully","output":""}
@@ -72,7 +73,7 @@ curl -s -X POST http://localhost:8080/api/lua \
 curl -s -X POST http://localhost:8080/api/lua \
   -H "Content-Type: application/json" \
   -d '{
-    "script": "robot.set_velocity_scaling(0.3)\nrobot.move_to_named(\"home\")"
+    "script": "SetVelScale(0.3)\nMoveNamed(\"home\")"
   }'
 ```
 
@@ -106,8 +107,8 @@ lua_file() {
 使用示例：
 
 ```bash
-lua_exec 'robot.move_to_named("home")'
-lua_exec 'print(robot.get_joint_positions())'
+lua_exec 'MoveNamed("home")'
+lua_exec 'local j = GetJoints(); print(j[1], j[2], j[3], j[4], j[5], j[6])'
 lua_file /path/to/my_script.lua
 ```
 
@@ -115,14 +116,13 @@ lua_file /path/to/my_script.lua
 
 ## Lua API 参考
 
-在 Lua 脚本中，机器人接口通过全局表 `robot` 访问。
-辅助封装通过 `local api = require("robot_api")` 加载。
+所有接口均为**全局函数**，直接调用，无需 `robot.` 前缀。
 
 ### 一、Servo 手动点动
 
 > 需要 servo_node 运行。发布消息后立即返回（非阻塞）。
 
-#### `robot.switch_servo_mode(mode)` → bool
+#### `ServoMode(mode)` → bool
 
 切换 Servo 命令类型。
 
@@ -131,25 +131,25 @@ lua_file /path/to/my_script.lua
 | `mode` | string | `"joint_jog"` 或 `"twist"` |
 
 ```lua
-robot.switch_servo_mode("joint_jog")
-robot.switch_servo_mode("twist")
+ServoMode("joint_jog")
+ServoMode("twist")
 ```
 
-#### `robot.servo_joint(name_or_index, velocity)`
+#### `ServoJoint(index, velocity)`
 
 单关节速度点动。
 
 | 参数 | 类型 | 说明 |
 |---|---|---|
-| `name_or_index` | string \| int | 关节名 `"joint1"`～`"joint6"` 或索引 `1`～`6` |
+| `index` | string \| int | 关节名 `"joint1"`～`"joint6"` 或索引 `1`～`6` |
 | `velocity` | number | 目标速度，单位 **deg/s** |
 
 ```lua
-robot.servo_joint(1, 20.0)          -- joint1 以 20 deg/s 点动
-robot.servo_joint("joint3", -15.0)  -- joint3 反向点动
+ServoJoint(1, 20.0)           -- joint1 以 20 deg/s 点动
+ServoJoint("joint3", -15.0)   -- joint3 反向点动
 ```
 
-#### `robot.servo_joints(velocities)`
+#### `ServoJoints(velocities)`
 
 六轴同时速度点动。
 
@@ -158,10 +158,10 @@ robot.servo_joint("joint3", -15.0)  -- joint3 反向点动
 | `velocities` | table | `{v1, v2, v3, v4, v5, v6}`，单位 **deg/s** |
 
 ```lua
-robot.servo_joints({0.0, 0.0, 0.0, 20.0, 20.0, 0.0})
+ServoJoints({0.0, 0.0, 0.0, 20.0, 20.0, 0.0})
 ```
 
-#### `robot.servo_cartesian(vx, vy, vz, rx, ry, rz [, frame_id])`
+#### `ServoCart(vx, vy, vz, rx, ry, rz [, frame_id])`
 
 笛卡尔空间速度点动（Twist）。
 
@@ -169,19 +169,19 @@ robot.servo_joints({0.0, 0.0, 0.0, 20.0, 20.0, 0.0})
 |---|---|---|
 | `vx/vy/vz` | number | 线速度，单位 **mm/s** |
 | `rx/ry/rz` | number | 角速度，单位 **deg/s** |
-| `frame_id` | string | 参考坐标系，默认 `base_link` |
+| `frame_id` | string | 参考坐标系，默认 `"base_link"` |
 
 ```lua
-robot.servo_cartesian(100, 0, 0,  0, 0, 0)              -- 沿基坐标系 X 轴前进 100mm/s
-robot.servo_cartesian(0, 0, 100,  0, 0, 0, robot.ee_frame)  -- 沿末端 Z 轴移动
+ServoCart(100, 0, 0,  0, 0, 0)                  -- 沿基坐标系 X 轴前进
+ServoCart(0, 0, 100,  0, 0, 0,  "link6")         -- 沿末端 Z 轴移动
 ```
 
-#### `robot.servo_stop()`
+#### `ServoStop()`
 
 向两个 topic 发布零速，停止 Servo 运动。
 
 ```lua
-robot.servo_stop()
+ServoStop()
 ```
 
 ---
@@ -190,16 +190,16 @@ robot.servo_stop()
 
 > 需要 move_group 运行。阻塞直到运动完成，返回 bool。
 
-#### `robot.move_to_named(name)` → bool
+#### `MoveNamed(name)` → bool
 
 运动到 SRDF 中定义的命名状态。
 
 ```lua
-robot.move_to_named("home")
-robot.move_to_named("ready")
+MoveNamed("home")
+MoveNamed("ready")
 ```
 
-#### `robot.move_to_joints(positions)` → bool
+#### `MoveJ(positions)` → bool
 
 按关节角度做 PTP 运动。
 
@@ -208,23 +208,16 @@ robot.move_to_named("ready")
 | `positions` | table | `{j1, j2, j3, j4, j5, j6}`，单位 **deg** |
 
 ```lua
-robot.move_to_joints({0, -45, -90, 60, 90, 0})
+MoveJ({0, -45, -90, 60, 90, 0})
 ```
 
-#### `robot.move_to_pose(x, y, z, qx, qy, qz, qw)` → bool
-
-按末端位姿做 PTP 运动（四元数）。x/y/z 单位 **mm**。
-
-```lua
-robot.move_to_pose(300, 0, 350,  1.0, 0.0, 0.0, 0.0)
-```
-
-#### `robot.move_to_pose_rpy(x, y, z, roll, pitch, yaw)` → bool
+#### `MovePose(x, y, z, roll, pitch, yaw)` → bool
 
 按末端位姿做 PTP 运动（RPY 欧拉角）。x/y/z 单位 **mm**，角度单位 **deg**。
 
 ```lua
-robot.move_to_pose_rpy(250, 100, 300,  180, 0, 0)
+MovePose(250, 100, 300,  180, 0, 0)
+MovePose(250, -100, 300, 180, 0, 30)   -- yaw 偏转 30°
 ```
 
 ---
@@ -234,42 +227,38 @@ robot.move_to_pose_rpy(250, 100, 300,  180, 0, 0)
 > 需要 move_group 运行。通过 `computeCartesianPath` 实现，阻塞直到运动完成，返回 bool。
 > 规划成功率 < 90% 时取消执行并返回 false。
 
-#### `robot.move_linear(x, y, z, qx, qy, qz, qw [, step [, min_fraction]])` → bool
+#### `MoveL(x, y, z, roll, pitch, yaw [, step])` → bool
 
-绝对位姿直线运动（四元数）。x/y/z 单位 **mm**。
-
-| 参数 | 类型 | 默认值 | 说明 |
-|---|---|---|---|
-| `step` | number | `10` | 插值步长，单位 **mm** |
-| `min_fraction` | number | `0.9` | 最小规划完成比例 |
+绝对位姿直线运动。x/y/z 单位 **mm**，角度 **deg**，step 单位 **mm** 默认 10。
 
 ```lua
-robot.move_linear(300, 0, 400,  1.0, 0.0, 0.0, 0.0)
-robot.move_linear(300, 0, 400,  1.0, 0.0, 0.0, 0.0,  5)        -- 精细步长 5mm
-robot.move_linear(300, 0, 400,  1.0, 0.0, 0.0, 0.0,  10, 0.95) -- 要求 95% 完成
+MoveL(300, 0, 400,  180, 0, 0)
+MoveL(300, 0, 400,  180, 0, 0,  5)   -- 精细步长 5mm
 ```
 
-#### `robot.move_linear_rpy(x, y, z, roll, pitch, yaw [, step])` → bool
+#### `MoveLRel(dx, dy, dz, drx, dry, drz [, step])` → bool
 
-绝对位姿直线运动（RPY 欧拉角）。x/y/z 单位 **mm**，角度 **deg**，step 单位 **mm**。
-
-```lua
-robot.move_linear_rpy(300, 0, 400,  180, 0, 0)
-```
-
-#### `robot.move_linear_relative(dx, dy, dz, drx, dry, drz [, step])` → bool
-
-相对当前末端位置的增量直线运动。
+相对当前末端位置的增量直线运动（增量在**基坐标系**下表达）。
 
 | 参数 | 类型 | 说明 |
 |---|---|---|
 | `dx/dy/dz` | number | 位置偏移，单位 **mm** |
 | `drx/dry/drz` | number | 姿态偏移（RPY 增量），单位 **deg** |
-| `step` | number | 插值步长，单位 **mm**，默认 10 |
 
 ```lua
-robot.move_linear_relative(0.0,  0.0, 50.0,  0.0, 0.0, 0.0)       -- 沿 Z 轴上升 50mm
-robot.move_linear_relative(30.0, 0.0, 0.0,   0.0, 0.0, 10.0)       -- X 前移 30mm + Z 轴转 10°
+MoveLRel(0.0,  0.0, 50.0,  0.0, 0.0,  0.0)   -- 沿基坐标系 Z 轴上升 50mm
+MoveLRel(30.0, 0.0, 0.0,   0.0, 0.0, 10.0)   -- X 前移 30mm + 绕 Z 轴转 10°
+```
+
+#### `MoveLRelTool(dx, dy, dz, drx, dry, drz [, step])` → bool
+
+相对当前末端位置的增量直线运动（增量在**工具坐标系**下表达）。
+
+平移量先由工具姿态旋转至基坐标系再叠加；旋转量在工具坐标系下施加（`q_new = q_cur * q_delta`）。
+
+```lua
+MoveLRelTool(0.0, 0.0, 50.0,  0.0, 0.0, 0.0)    -- 沿工具 Z 轴（进给方向）前进 50mm
+MoveLRelTool(20.0, 0.0, 0.0,  0.0, 0.0, 15.0)   -- 沿工具 X 轴平移 + 绕工具 Z 轴转 15°
 ```
 
 ---
@@ -278,37 +267,37 @@ robot.move_linear_relative(30.0, 0.0, 0.0,   0.0, 0.0, 10.0)       -- X 前移 3
 
 > 需要 move_group 运行。设置后对后续所有规划生效。
 
-#### `robot.set_velocity_scaling(factor)`
+#### `SetVelScale(factor)`
 
 设置最大速度缩放系数，范围 `[0.01, 1.0]`。
 
 ```lua
-robot.set_velocity_scaling(0.3)   -- 30% 最大速度
+SetVelScale(0.3)   -- 30% 最大速度
 ```
 
-#### `robot.set_acceleration_scaling(factor)`
+#### `SetAccScale(factor)`
 
 设置最大加速度缩放系数，范围 `[0.01, 1.0]`。
 
 ```lua
-robot.set_acceleration_scaling(0.1)
+SetAccScale(0.1)
 ```
 
-#### `robot.set_planning_time(seconds)`
+#### `SetPlanTime(seconds)`
 
 设置规划超时时间。
 
 ```lua
-robot.set_planning_time(5.0)
+SetPlanTime(5.0)
 ```
 
-#### `robot.set_planner(planner_id)`
+#### `SetPlanner(planner_id)`
 
 切换运动规划器。
 
 ```lua
-robot.set_planner("RRTConnect")
-robot.set_planner("LIN")   -- Pilz 直线规划器
+SetPlanner("RRTConnect")
+SetPlanner("LIN")   -- Pilz 直线规划器
 ```
 
 ---
@@ -317,138 +306,68 @@ robot.set_planner("LIN")   -- Pilz 直线规划器
 
 > 需要 move_group 运行。
 
-#### `robot.get_joint_positions()` → table
+#### `GetJoints()` → table
 
-返回当前关节角度，单位 **deg**。
+返回当前关节角度 `{j1..j6}`，单位 **deg**。
 
 ```lua
-local j = robot.get_joint_positions()
+local j = GetJoints()
 -- j[1]~j[6]，单位 deg
 print(j[1])
 ```
 
-#### `robot.get_current_pose()` → table
+#### `GetPose()` → table
 
-返回当前末端位姿（四元数）。x/y/z 单位 **mm**。
-
-```lua
-local p = robot.get_current_pose()
--- p.x, p.y, p.z        位置，单位 mm
--- p.qx, p.qy, p.qz, p.qw  姿态四元数
-```
-
-#### `robot.get_current_rpy()` → table
-
-返回当前末端姿态（RPY 欧拉角），单位 **deg**。
+返回当前末端位姿 `{x, y, z, roll, pitch, yaw}`，x/y/z 单位 **mm**，角度单位 **deg**。
 
 ```lua
-local r = robot.get_current_rpy()
--- r.roll, r.pitch, r.yaw，单位 deg
+local p = GetPose()
+-- p[1]=x  p[2]=y  p[3]=z     （mm）
+-- p[4]=roll  p[5]=pitch  p[6]=yaw  （deg）
+print(string.format("x=%.1f  y=%.1f  z=%.1f mm", p[1], p[2], p[3]))
 ```
 
 ---
 
 ### 六、工具函数
 
-#### `robot.sleep(seconds)`
+#### `Sleep(ms)`
 
-暂停执行。
+暂停执行，单位**毫秒**。
 
 ```lua
-robot.sleep(0.5)
+Sleep(500)    -- 暂停 500ms
+Sleep(1000)   -- 暂停 1s
 ```
 
-#### `robot.log(msg)` / `robot.log_warn(msg)` / `robot.log_error(msg)`
+#### `Log(msg)` / `LogWarn(msg)` / `LogError(msg)`
 
 输出 ROS 日志。
 
 ```lua
-robot.log("运动完成")
-robot.log_warn("速度过高")
-robot.log_error("规划失败")
+Log("运动完成")
+LogWarn("速度过高")
+LogError("规划失败")
 ```
 
-#### `robot.ok()` → bool
+#### `Ok()` → bool
 
 返回 ROS 节点是否仍在运行，可用于循环退出条件。
 
 ```lua
-while robot.ok() do
-  robot.servo_joint(1, 20.0)
-  robot.sleep(0.02)
+while Ok() do
+  ServoJoint(1, 20.0)
+  Sleep(20)
 end
 ```
 
-#### `deg2rad(deg)` / `rad2deg(rad)`
+#### `DegRad(deg)` / `RadDeg(rad)`
 
-角度与弧度互转（全局函数，备用）。
-
-```lua
-deg2rad(90)   -- → 1.5708
-rad2deg(1.57) -- → 89.95
-```
-
-#### 常量
-
-| 变量 | 说明 |
-|---|---|
-| `robot.ee_frame` | 末端执行器坐标系名，默认 `"link6"` |
-| `robot.base_frame` | 基坐标系名，默认 `"base_link"` |
-| `robot.planning_group` | 规划组名，默认 `"mockway_group"` |
-| `robot.joint_names` | 关节名列表 `{"joint1", ..., "joint6"}` |
-
----
-
-## robot_api 辅助模块
-
-`require("robot_api")` 提供基于 `robot.*` 的高层封装：
-
-#### `api.print_joints()`
-
-以度数打印当前六轴关节角。
-
-#### `api.print_pose()`
-
-打印当前末端位置（mm）和 RPY 姿态（deg）。
-
-#### `api.jog_joint(idx, velocity, duration)`
-
-关节点动指定时长后自动停止。velocity 单位 **deg/s**。
+角度与弧度互转。
 
 ```lua
-api.jog_joint(3, 20.0, 1.5)   -- joint3 以 20 deg/s 点动 1.5 秒
-```
-
-#### `api.jog_cartesian(vx, vy, vz, rx, ry, rz, duration [, frame])`
-
-笛卡尔点动指定时长后自动停止。线速度单位 **mm/s**，角速度 **deg/s**。
-
-```lua
-api.jog_cartesian(100, 0, 0,  0, 0, 0,  1.5)                   -- 沿 X 轴移动 1.5 秒
-api.jog_cartesian(0, 0, 100,  0, 0, 0,  1.0, robot.ee_frame)    -- 末端坐标系
-```
-
-#### `api.joints_deg(a1, a2, a3, a4, a5, a6)` → table
-
-度数输入，返回关节目标表，用于 `robot.move_to_joints()`。
-
-```lua
-robot.move_to_joints(api.joints_deg(0, -45, -90, 60, 90, 0))
--- 与以下写法等价：
-robot.move_to_joints({0, -45, -90, 60, 90, 0})
-```
-
-#### `api.move_linear_waypoints(waypoints)` → bool
-
-多航点直线折线运动，逐段执行 `robot.move_linear()`。x/y/z 单位 **mm**。
-
-```lua
-local path = {
-  {300, 0.0, 400,  1.0, 0.0, 0.0, 0.0},
-  {300, 100, 400,  1.0, 0.0, 0.0, 0.0},
-  {300, 100, 350,  1.0, 0.0, 0.0, 0.0},
-}
-api.move_linear_waypoints(path)
+DegRad(90)    -- → 1.5708
+RadDeg(1.57)  -- → 89.95
 ```
 
 ---
@@ -460,7 +379,7 @@ api.move_linear_waypoints(path)
 | `demo_joint_servo.lua` | 逐轴 / 多轴关节点动演示（deg/s） | servo_node |
 | `demo_cartesian_servo.lua` | 笛卡尔平移（mm/s）/ 旋转（deg/s）/ 组合点动 | servo_node |
 | `demo_ptp.lua` | PTP 命名状态 / 关节角（deg）/ 位姿目标（mm）/ 速度缩放 | move_group |
-| `demo_linear.lua` | 绝对 / 相对 / 多航点直线运动（mm）/ 矩形轨迹 | move_group |
+| `demo_linear.lua` | 绝对 / 相对（基坐标系 & 工具坐标系）/ 多航点直线运动 | move_group |
 
 ---
 
@@ -468,20 +387,20 @@ api.move_linear_waypoints(path)
 
 ```lua
 -- my_script.lua
-local api = require("robot_api")
 
 -- 初始参数
-robot.set_velocity_scaling(0.3)
-robot.set_acceleration_scaling(0.1)
+SetVelScale(0.3)
+SetAccScale(0.1)
 
 -- 回 home
-assert(robot.move_to_named("home"), "回 home 失败")
+assert(MoveNamed("home"), "回 home 失败")
 
--- 直线上升 50mm
-robot.move_linear_relative(0, 0, 50,  0, 0, 0)
+-- 直线上升 50mm（基坐标系 Z 轴）
+MoveLRel(0, 0, 50,  0, 0, 0)
 
--- 打印状态
-api.print_pose()
+-- 打印当前状态
+local p = GetPose()
+print(string.format("到达: x=%.1f  y=%.1f  z=%.1f mm", p[1], p[2], p[3]))
 ```
 
 启动：
