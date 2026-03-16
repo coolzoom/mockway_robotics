@@ -74,6 +74,7 @@ if(NPM_EXECUTABLE)
 else()
   message(WARNING
     "npm not found — frontend will NOT be built automatically.\n"
+    "curl -o- https://fnm.vercel.app/install | bash && fnm install 22"
     "Run manually: cd ui && npm install && npm run build")
 endif()
 
