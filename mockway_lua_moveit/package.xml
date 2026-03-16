@@ -16,7 +16,7 @@
   <depend>rclcpp</depend>
   <depend>ament_index_cpp</depend>
   <build_depend>libcpp-httplib-dev</build_depend>
-  <build_depend>nlohmann-json3-dev</build_depend>
+  <build_depend>nlohmann-json-dev</build_depend>
   <depend>moveit_core</depend>
   <depend>moveit_ros_planning</depend>
   <depend>moveit_ros_planning_interface</depend>

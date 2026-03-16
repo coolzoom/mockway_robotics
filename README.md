@@ -97,7 +97,7 @@ sudo apt install liblua5.4-dev
 
 ```bash
 cd ~/mockway_ws
-rosdep install --from-paths src/mockway_robotics/mockway_bringup/ --ignore-src -r -y
+rosdep install --from-paths src/mockway_robotics/ --ignore-src -r -y
 colcon build --symlink-install --packages-select mockway_bringup
 ```
 3. 启动程序
