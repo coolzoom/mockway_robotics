@@ -1,6 +1,6 @@
 const r = (v) => Math.round(v * 10000) / 10000
 
-// Shadow inputs for 6 joint values (rad)
+// Shadow inputs for 6 joint values (deg)
 function jointShadows(joints) {
   const labels = ['J1','J2','J3','J4','J5','J6']
   const inputs = {}
@@ -20,7 +20,7 @@ function poseShadows(pose) {
   return inputs
 }
 
-// Zero shadows for 6-velocity servo_joints
+// Zero shadows for ServoJoints
 const ZERO_VEL = (() => {
   const inputs = {}
   ;['V1','V2','V3','V4','V5','V6'].forEach(l => {
@@ -29,7 +29,7 @@ const ZERO_VEL = (() => {
   return inputs
 })()
 
-// Zero shadows for servo_cartesian
+// Zero shadows for ServoCart
 const ZERO_CART = (() => {
   const inputs = {}
   ;['VX','VY','VZ','RX','RY','RZ'].forEach(l => {
@@ -38,7 +38,7 @@ const ZERO_CART = (() => {
   return inputs
 })()
 
-// Zero shadows for move_linear_relative
+// Zero shadows for MoveLRel / MoveLRelTool
 const ZERO_REL = (() => {
   const inputs = {}
   ;['DX','DY','DZ','DRX','DRY','DRZ'].forEach(l => {
@@ -49,8 +49,8 @@ const ZERO_REL = (() => {
 
 /**
  * Create toolbox config with current robot values as defaults.
- * @param {number[]} joints - current joint positions (rad)
- * @param {number[]} pose   - current end-effector pose [x,y,z,roll,pitch,yaw] (m, rad)
+ * @param {number[]} joints - current joint positions (deg)
+ * @param {number[]} pose   - current end-effector pose [x,y,z,roll,pitch,yaw] (mm, deg)
  */
 export function createToolbox(joints, pose) {
   return {
@@ -63,12 +63,12 @@ export function createToolbox(joints, pose) {
         name: 'Servo',
         colour: '30',
         contents: [
-          { kind: 'block', type: 'robot_switch_servo_mode' },
+          { kind: 'block', type: 'robot_servo_mode' },
           { kind: 'block', type: 'robot_servo_joint', inputs: {
-            VEL: { shadow: { type: 'math_number', fields: { NUM: 0.3 } } }
+            VEL: { shadow: { type: 'math_number', fields: { NUM: 10 } } }
           }},
           { kind: 'block', type: 'robot_servo_joints', inputs: { ...ZERO_VEL } },
-          { kind: 'block', type: 'robot_servo_cartesian', inputs: { ...ZERO_CART } },
+          { kind: 'block', type: 'robot_servo_cart', inputs: { ...ZERO_CART } },
           { kind: 'block', type: 'robot_servo_stop' }
         ]
       },
@@ -80,13 +80,13 @@ export function createToolbox(joints, pose) {
         colour: '140',
         contents: [
           { kind: 'label', text: 'PTP (Point-to-Point)' },
-          { kind: 'block', type: 'robot_move_to_named' },
-          { kind: 'block', type: 'robot_move_to_joints', inputs: jointShadows(joints) },
-          { kind: 'block', type: 'robot_move_to_pose_rpy', inputs: poseShadows(pose) },
+          { kind: 'block', type: 'robot_move_named' },
+          { kind: 'block', type: 'robot_move_j', inputs: jointShadows(joints) },
+          { kind: 'block', type: 'robot_move_pose', inputs: poseShadows(pose) },
           { kind: 'label', text: 'Linear' },
-          { kind: 'block', type: 'robot_move_linear_rpy', inputs: poseShadows(pose) },
-          { kind: 'block', type: 'robot_move_linear_relative', inputs: { ...ZERO_REL } },
-          { kind: 'block', type: 'robot_move_linear_relative_tool', inputs: { ...ZERO_REL } }
+          { kind: 'block', type: 'robot_move_l', inputs: poseShadows(pose) },
+          { kind: 'block', type: 'robot_move_l_rel', inputs: { ...ZERO_REL } },
+          { kind: 'block', type: 'robot_move_l_rel_tool', inputs: { ...ZERO_REL } }
         ]
       },
 
@@ -96,13 +96,13 @@ export function createToolbox(joints, pose) {
         name: 'Parameters',
         colour: '270',
         contents: [
-          { kind: 'block', type: 'robot_set_velocity_scaling', inputs: {
+          { kind: 'block', type: 'robot_set_vel_scale', inputs: {
             FACTOR: { shadow: { type: 'math_number', fields: { NUM: 0.3 } } }
           }},
-          { kind: 'block', type: 'robot_set_acceleration_scaling', inputs: {
+          { kind: 'block', type: 'robot_set_acc_scale', inputs: {
             FACTOR: { shadow: { type: 'math_number', fields: { NUM: 0.1 } } }
           }},
-          { kind: 'block', type: 'robot_set_planning_time', inputs: {
+          { kind: 'block', type: 'robot_set_plan_time', inputs: {
             SECONDS: { shadow: { type: 'math_number', fields: { NUM: 5 } } }
           }},
           { kind: 'block', type: 'robot_set_planner' }
@@ -115,9 +115,8 @@ export function createToolbox(joints, pose) {
         name: 'Status',
         colour: '210',
         contents: [
-          { kind: 'block', type: 'robot_get_joint_positions' },
-          { kind: 'block', type: 'robot_get_current_pose' },
-          { kind: 'block', type: 'robot_get_current_rpy' }
+          { kind: 'block', type: 'robot_get_joints' },
+          { kind: 'block', type: 'robot_get_pose' }
         ]
       },
 
@@ -128,7 +127,7 @@ export function createToolbox(joints, pose) {
         colour: '45',
         contents: [
           { kind: 'block', type: 'robot_sleep', inputs: {
-            SECONDS: { shadow: { type: 'math_number', fields: { NUM: 1 } } }
+            MS: { shadow: { type: 'math_number', fields: { NUM: 1000 } } }
           }},
           { kind: 'block', type: 'robot_log', inputs: {
             MSG: { shadow: { type: 'text', fields: { TEXT: 'message' } } }
@@ -140,10 +139,10 @@ export function createToolbox(joints, pose) {
             MSG: { shadow: { type: 'text', fields: { TEXT: 'error' } } }
           }},
           { kind: 'block', type: 'robot_ok' },
-          { kind: 'block', type: 'robot_deg2rad', inputs: {
+          { kind: 'block', type: 'robot_deg_rad', inputs: {
             DEG: { shadow: { type: 'math_number', fields: { NUM: 90 } } }
           }},
-          { kind: 'block', type: 'robot_rad2deg', inputs: {
+          { kind: 'block', type: 'robot_rad_deg', inputs: {
             RAD: { shadow: { type: 'math_number', fields: { NUM: 1.5708 } } }
           }},
           { kind: 'block', type: 'robot_print', inputs: {

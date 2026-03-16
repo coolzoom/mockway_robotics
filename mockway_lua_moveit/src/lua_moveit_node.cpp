@@ -2,11 +2,33 @@
  * lua_moveit_node.cpp
  *
  * LuaMoveItNode 类实现。
- * 将 MoveIt 和 MoveIt Servo 封装为 Lua API，支持：
- *   - 关节手动点动 (Joint Servo Jog)
- *   - 笛卡尔手动点动 (Cartesian Servo Twist)
- *   - 点到点规划执行 (PTP via MoveGroupInterface)
- *   - 直线运动 (Linear via computeCartesianPath)
+ * 将 MoveIt 和 MoveIt Servo 封装为全局 Lua API（驼峰命名，无 robot 表），支持：
+ *   - 关节/笛卡尔手动点动 (Servo)
+ *   - 点到点规划执行 (PTP: MoveJ / MovePose)
+ *   - 直线运动 (MoveL / MoveLRel / MoveLRelTool)
+ *
+ * Lua 全局 API 速查：
+ *   ServoMode(mode)                           切换 Servo 模式 "joint_jog"|"twist"
+ *   ServoJoint(idx, vel)                      单关节点动 deg/s
+ *   ServoJoints({v1..v6})                     六轴点动 deg/s
+ *   ServoCart(vx,vy,vz,rx,ry,rz[,frame])      笛卡尔点动 mm/s, deg/s
+ *   ServoStop()                               停止点动
+ *   MoveNamed(name)                           PTP → SRDF 命名状态
+ *   MoveJ({j1..j6})                           PTP → 关节角 deg
+ *   MovePose(x,y,z,roll,pitch,yaw)            PTP → 末端位姿 mm, deg
+ *   MoveL(x,y,z,roll,pitch,yaw[,step])        直线 → 绝对位姿 mm, deg
+ *   MoveLRel(dx,dy,dz,drx,dry,drz[,step])     直线 → 相对基坐标系增量 mm, deg
+ *   MoveLRelTool(dx,dy,dz,drx,dry,drz[,step]) 直线 → 相对工具坐标系增量 mm, deg
+ *   SetVelScale(f)                            速度比例 [0.01, 1.0]
+ *   SetAccScale(f)                            加速度比例 [0.01, 1.0]
+ *   SetPlanTime(t)                            规划超时 s
+ *   SetPlanner(id)                            切换规划器
+ *   GetJoints()  → {j1..j6} deg              获取关节角
+ *   GetPose()    → {x,y,z,roll,pitch,yaw}     获取末端位姿 mm, deg
+ *   Sleep(ms)                                 暂停 ms 毫秒
+ *   Log(msg) / LogWarn(msg) / LogError(msg)   ROS 日志
+ *   Ok()                                      节点运行中返回 true
+ *   DegRad(d) / RadDeg(r)                     角度转换
  */
 
 #include "mockway_lua_moveit/lua_moveit_node.hpp"
@@ -171,11 +193,7 @@ std::pair<bool, std::string> LuaMoveItNode::run_string_captured(const std::strin
     oss << "\n";
     captured += oss.str();
   };
-#if 0
-  RCLCPP_INFO(get_logger(), "HTTP 执行 Lua 字符串（%zu 字节）", code.size());
-#else
   RCLCPP_INFO(get_logger(), "HTTP 执行 Lua 字符串\n%s", code.c_str());
-#endif
   try {
     lua_.script(code);
     return {true, captured};
@@ -214,12 +232,12 @@ std::vector<double> LuaMoveItNode::get_end_pose_rpy_raw()
       tf.transform.rotation.z);
     auto euler = q.toRotationMatrix().eulerAngles(2, 1, 0); // ZYX -> yaw, pitch, roll
     return {
-      tf.transform.translation.x * 1000.0,  // m -> mm
-      tf.transform.translation.y * 1000.0,  // m -> mm
-      tf.transform.translation.z * 1000.0,  // m -> mm
-      euler[2] * 180.0 / M_PI,  // roll  rad -> deg
-      euler[1] * 180.0 / M_PI,  // pitch rad -> deg
-      euler[0] * 180.0 / M_PI   // yaw   rad -> deg
+      tf.transform.translation.x * 1000.0,
+      tf.transform.translation.y * 1000.0,
+      tf.transform.translation.z * 1000.0,
+      euler[2] * 180.0 / M_PI,
+      euler[1] * 180.0 / M_PI,
+      euler[0] * 180.0 / M_PI
     };
   } catch (const tf2::TransformException& e) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
@@ -243,40 +261,17 @@ void LuaMoveItNode::setup_lua_api()
     sol::lib::math,  sol::lib::io,     sol::lib::os,
     sol::lib::coroutine, sol::lib::package);
 
-  auto R = lua_.create_named_table("robot");
-
-  // ── 常量 ──────────────────────────────────────────────────────────────────
-  {
-    sol::table jn = lua_.create_table();
-    for (size_t i = 0; i < defaults::JOINT_NAMES.size(); ++i)
-      jn[i + 1] = defaults::JOINT_NAMES[i];
-    R["joint_names"]    = jn;
-    R["ee_frame"]       = ee_frame_;
-    R["base_frame"]     = base_frame_;
-    R["planning_group"] = planning_group_;
-  }
-
   // ══════════════════════════════════════════════════════════════════════════
-  // 一、MoveIt Servo — 关节手动点动
+  // 一、MoveIt Servo — 点动
   // ══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * robot.servo_joints(velocities)
-   *   velocities : table {v1,v2,v3,v4,v5,v6}，单位 deg/s
-   */
-  R.set_function("servo_joints", [this](sol::table vels) {
-    std::vector<double> v(6, 0.0);
-    for (int i = 1; i <= 6; ++i)
-      if (vels[i].valid()) v[i - 1] = vels[i].get<double>() * (M_PI / 180.0);
-    publish_joint_jog(v);
+  // ServoMode(mode)  "joint_jog" | "twist"，返回 bool
+  lua_.set_function("ServoMode", [this](const std::string& mode) -> bool {
+    return switch_servo_mode(mode);
   });
 
-  /**
-   * robot.servo_joint(name_or_index, velocity)
-   *   name_or_index : 关节名字符串 ("joint1"~"joint6") 或索引 1~6
-   *   velocity      : deg/s
-   */
-  R.set_function("servo_joint", [this](sol::object name_or_idx, double vel) {
+  // ServoJoint(idx, vel)  idx: 1~6 或关节名，vel: deg/s
+  lua_.set_function("ServoJoint", [this](sol::object name_or_idx, double vel) {
     std::vector<double> v(6, 0.0);
     if (name_or_idx.is<int>()) {
       int idx = name_or_idx.as<int>();
@@ -289,15 +284,16 @@ void LuaMoveItNode::setup_lua_api()
     publish_joint_jog(v);
   });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // 二、MoveIt Servo — 笛卡尔手动点动
-  // ══════════════════════════════════════════════════════════════════════════
+  // ServoJoints({v1..v6})  deg/s
+  lua_.set_function("ServoJoints", [this](sol::table vels) {
+    std::vector<double> v(6, 0.0);
+    for (int i = 1; i <= 6; ++i)
+      if (vels[i].valid()) v[i - 1] = vels[i].get<double>() * (M_PI / 180.0);
+    publish_joint_jog(v);
+  });
 
-  /**
-   * robot.servo_cartesian(vx, vy, vz, rx, ry, rz [, frame_id])
-   *   vx/vy/vz : 线速度 mm/s，rx/ry/rz : 角速度 deg/s
-   */
-  R.set_function("servo_cartesian",
+  // ServoCart(vx,vy,vz,rx,ry,rz [,frame])  mm/s, deg/s
+  lua_.set_function("ServoCart",
     [this](double vx, double vy, double vz,
            double rx, double ry, double rz,
            sol::optional<std::string> frame_opt)
@@ -307,45 +303,29 @@ void LuaMoveItNode::setup_lua_api()
                     frame_opt.value_or(base_frame_));
     });
 
-  /**
-   * robot.servo_stop()  — 向两个 topic 发布零速
-   */
-  R.set_function("servo_stop", [this]() {
+  // ServoStop()
+  lua_.set_function("ServoStop", [this]() {
     publish_twist(0, 0, 0, 0, 0, 0, base_frame_);
     publish_joint_jog(std::vector<double>(6, 0.0));
   });
 
-  /**
-   * robot.switch_servo_mode(mode)
-   *   mode : "joint_jog" | "twist"，返回 bool
-   */
-  R.set_function("switch_servo_mode", [this](const std::string& mode) -> bool {
-    return switch_servo_mode(mode);
-  });
-
   // ══════════════════════════════════════════════════════════════════════════
-  // 三、MoveIt — 点到点规划 (PTP)
+  // 二、MoveIt — 点到点规划 (PTP)
   // ══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * robot.move_to_named(name)  — 移动到 SRDF 命名状态，返回 bool
-   */
-  R.set_function("move_to_named", [this](const std::string& name) -> bool {
+  // MoveNamed(name)  返回 bool
+  lua_.set_function("MoveNamed", [this](const std::string& name) -> bool {
     if (!init_move_group()) return false;
     std::lock_guard<std::mutex> lk(mg_mutex_);
     move_group_->setNamedTarget(name);
     auto ret = move_group_->move();
     bool ok = (ret == moveit::core::MoveItErrorCode::SUCCESS);
-    RCLCPP_INFO(get_logger(), "move_to_named('%s') -> %s",
-                name.c_str(), ok ? "成功" : "失败");
+    RCLCPP_INFO(get_logger(), "MoveNamed('%s') -> %s", name.c_str(), ok ? "成功" : "失败");
     return ok;
   });
 
-  /**
-   * robot.move_to_joints(positions)
-   *   positions : table {j1,j2,j3,j4,j5,j6}，单位 deg，返回 bool
-   */
-  R.set_function("move_to_joints", [this](sol::table pos) -> bool {
+  // MoveJ({j1..j6})  deg，返回 bool
+  lua_.set_function("MoveJ", [this](sol::table pos) -> bool {
     if (!init_move_group()) return false;
     std::vector<double> target(6, 0.0);
     for (int i = 1; i <= 6; ++i)
@@ -354,36 +334,12 @@ void LuaMoveItNode::setup_lua_api()
     move_group_->setJointValueTarget(target);
     auto ret = move_group_->move();
     bool ok = (ret == moveit::core::MoveItErrorCode::SUCCESS);
-    RCLCPP_INFO(get_logger(), "move_to_joints -> %s", ok ? "成功" : "失败");
+    RCLCPP_INFO(get_logger(), "MoveJ -> %s", ok ? "成功" : "失败");
     return ok;
   });
 
-  /**
-   * robot.move_to_pose(x, y, z, qx, qy, qz, qw)
-   *   末端执行器目标位姿（PTP，四元数），返回 bool
-   */
-  R.set_function("move_to_pose",
-    [this](double x, double y, double z,
-           double qx, double qy, double qz, double qw) -> bool
-    {
-      if (!init_move_group()) return false;
-      geometry_msgs::msg::Pose p;
-      p.position.x = x/1000.0; p.position.y = y/1000.0; p.position.z = z/1000.0;
-      p.orientation.x = qx; p.orientation.y = qy;
-      p.orientation.z = qz; p.orientation.w = qw;
-      std::lock_guard<std::mutex> lk(mg_mutex_);
-      move_group_->setPoseTarget(p);
-      auto ret = move_group_->move();
-      bool ok = (ret == moveit::core::MoveItErrorCode::SUCCESS);
-      RCLCPP_INFO(get_logger(), "move_to_pose -> %s", ok ? "成功" : "失败");
-      return ok;
-    });
-
-  /**
-   * robot.move_to_pose_rpy(x, y, z, roll, pitch, yaw)
-   *   末端执行器目标位姿（PTP，欧拉角，单位 deg），x/y/z 单位 mm，返回 bool
-   */
-  R.set_function("move_to_pose_rpy",
+  // MovePose(x,y,z,roll,pitch,yaw)  mm, deg，返回 bool
+  lua_.set_function("MovePose",
     [this](double x, double y, double z,
            double roll, double pitch, double yaw) -> bool
     {
@@ -399,61 +355,16 @@ void LuaMoveItNode::setup_lua_api()
       move_group_->setPoseTarget(p);
       auto ret = move_group_->move();
       bool ok = (ret == moveit::core::MoveItErrorCode::SUCCESS);
-      RCLCPP_INFO(get_logger(), "move_to_pose_rpy -> %s", ok ? "成功" : "失败");
+      RCLCPP_INFO(get_logger(), "MovePose -> %s", ok ? "成功" : "失败");
       return ok;
     });
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 四、MoveIt — 直线运动 (Linear)
+  // 三、MoveIt — 直线运动 (Linear)
   // ══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * robot.move_linear(x, y, z, qx, qy, qz, qw [, step [, min_fraction]])
-   *   step         : 插值步长 (mm)，默认 10
-   *   min_fraction : 最小完成比例，默认 0.9，返回 bool
-   */
-  R.set_function("move_linear",
-    [this](double x, double y, double z,
-           double qx, double qy, double qz, double qw,
-           sol::optional<double> step_opt,
-           sol::optional<double> min_frac_opt) -> bool
-    {
-      if (!init_move_group()) return false;
-      double step     = step_opt.value_or(10.0) / 1000.0;
-      double min_frac = min_frac_opt.value_or(0.9);
-
-      geometry_msgs::msg::Pose target;
-      target.position.x = x/1000.0; target.position.y = y/1000.0; target.position.z = z/1000.0;
-      target.orientation.x = qx; target.orientation.y = qy;
-      target.orientation.z = qz; target.orientation.w = qw;
-
-      std::vector<geometry_msgs::msg::Pose> waypoints = {target};
-      moveit_msgs::msg::RobotTrajectory trajectory;
-
-      std::lock_guard<std::mutex> lk(mg_mutex_);
-      double fraction = move_group_->computeCartesianPath(waypoints, step, trajectory);
-
-      RCLCPP_INFO(get_logger(), "直线规划完成率: %.1f%%", fraction * 100.0);
-      if (fraction < min_frac) {
-        RCLCPP_WARN(get_logger(),
-          "直线规划完成率过低 (%.1f%% < %.1f%%)，取消执行",
-          fraction * 100.0, min_frac * 100.0);
-        return false;
-      }
-
-      moveit::planning_interface::MoveGroupInterface::Plan plan;
-      plan.trajectory = trajectory;
-      auto ret = move_group_->execute(plan);
-      bool ok = (ret == moveit::core::MoveItErrorCode::SUCCESS);
-      RCLCPP_INFO(get_logger(), "move_linear -> %s", ok ? "成功" : "失败");
-      return ok;
-    });
-
-  /**
-   * robot.move_linear_rpy(x, y, z, roll, pitch, yaw [, step])
-   *   欧拉角版本的直线运动，x/y/z 单位 mm，角度 deg，step 单位 mm 默认 10
-   */
-  R.set_function("move_linear_rpy",
+  // MoveL(x,y,z,roll,pitch,yaw [,step])  mm, deg，step mm 默认 10，返回 bool
+  lua_.set_function("MoveL",
     [this](double x, double y, double z,
            double roll, double pitch, double yaw,
            sol::optional<double> step_opt) -> bool
@@ -463,52 +374,45 @@ void LuaMoveItNode::setup_lua_api()
         Eigen::AngleAxisd(yaw   * (M_PI/180.0), Eigen::Vector3d::UnitZ()) *
         Eigen::AngleAxisd(pitch * (M_PI/180.0), Eigen::Vector3d::UnitY()) *
         Eigen::AngleAxisd(roll  * (M_PI/180.0), Eigen::Vector3d::UnitX());
-
       geometry_msgs::msg::Pose target;
       target.position.x = x/1000.0; target.position.y = y/1000.0; target.position.z = z/1000.0;
       target.orientation = tf2::toMsg(q);
-
+      double step = step_opt.value_or(10.0) / 1000.0;
       std::vector<geometry_msgs::msg::Pose> waypoints = {target};
       moveit_msgs::msg::RobotTrajectory trajectory;
-      double step = step_opt.value_or(10.0) / 1000.0;
-
       std::lock_guard<std::mutex> lk(mg_mutex_);
       double fraction = move_group_->computeCartesianPath(waypoints, step, trajectory);
-
+      RCLCPP_INFO(get_logger(), "MoveL 规划完成率: %.1f%%", fraction * 100.0);
       if (fraction < 0.9) {
-        RCLCPP_WARN(get_logger(), "直线规划完成率过低: %.1f%%", fraction * 100.0);
+        RCLCPP_WARN(get_logger(), "MoveL 规划完成率过低，取消执行");
         return false;
       }
       moveit::planning_interface::MoveGroupInterface::Plan plan;
       plan.trajectory = trajectory;
       auto ret = move_group_->execute(plan);
-      return (ret == moveit::core::MoveItErrorCode::SUCCESS);
+      bool ok = (ret == moveit::core::MoveItErrorCode::SUCCESS);
+      RCLCPP_INFO(get_logger(), "MoveL -> %s", ok ? "成功" : "失败");
+      return ok;
     });
 
-  /**
-   * robot.move_linear_relative(dx, dy, dz, drx, dry, drz [, step])
-   *   相对于当前末端位置的直线增量运动（增量在基坐标系下表达）
-   *   dx/dy/dz 单位 mm，drx/dry/drz 单位 deg，step 单位 mm 默认 10
-   */
-  R.set_function("move_linear_relative",
+  // MoveLRel(dx,dy,dz,drx,dry,drz [,step])
+  //   增量在基坐标系下表达，mm, deg，step mm 默认 10，返回 bool
+  lua_.set_function("MoveLRel",
     [this](double dx, double dy, double dz,
            double drx, double dry, double drz,
            sol::optional<double> step_opt) -> bool
     {
       if (!init_move_group()) return false;
       double step = step_opt.value_or(10.0) / 1000.0;
-
       geometry_msgs::msg::PoseStamped cur;
       {
         std::lock_guard<std::mutex> lk(mg_mutex_);
         cur = move_group_->getCurrentPose();
       }
-
       geometry_msgs::msg::Pose target = cur.pose;
       target.position.x += dx/1000.0;
       target.position.y += dy/1000.0;
       target.position.z += dz/1000.0;
-
       Eigen::Quaterniond q_cur;
       tf2::fromMsg(cur.pose.orientation, q_cur);
       Eigen::Quaterniond q_delta =
@@ -516,86 +420,71 @@ void LuaMoveItNode::setup_lua_api()
         Eigen::AngleAxisd(dry * (M_PI/180.0), Eigen::Vector3d::UnitY()) *
         Eigen::AngleAxisd(drx * (M_PI/180.0), Eigen::Vector3d::UnitX());
       target.orientation = tf2::toMsg(q_delta * q_cur);
-
       std::vector<geometry_msgs::msg::Pose> waypoints = {target};
       moveit_msgs::msg::RobotTrajectory trajectory;
-
       std::lock_guard<std::mutex> lk(mg_mutex_);
       double fraction = move_group_->computeCartesianPath(waypoints, step, trajectory);
       if (fraction < 0.9) {
-        RCLCPP_WARN(get_logger(), "相对直线规划完成率过低: %.1f%%", fraction * 100.0);
-        return false;
-      }
-      moveit::planning_interface::MoveGroupInterface::Plan plan;
-      plan.trajectory = trajectory;
-      auto ret = move_group_->execute(plan);
-      return (ret == moveit::core::MoveItErrorCode::SUCCESS);
-    });
-
-  /**
-   * robot.move_linear_relative_tool(dx, dy, dz, drx, dry, drz [, step])
-   *   相对于当前末端工具坐标系的直线增量运动（增量在工具坐标系下表达）
-   *   dx/dy/dz 单位 mm，drx/dry/drz 单位 deg，step 单位 mm 默认 10
-   *   与 move_linear_relative 的区别：
-   *     - 平移量先由工具姿态旋转至基坐标系再叠加
-   *     - 旋转量在工具坐标系下施加（q_new = q_cur * q_delta）
-   */
-  R.set_function("move_linear_relative_tool",
-    [this](double dx, double dy, double dz,
-           double drx, double dry, double drz,
-           sol::optional<double> step_opt) -> bool
-    {
-      if (!init_move_group()) return false;
-      double step = step_opt.value_or(10.0) / 1000.0;
-
-      geometry_msgs::msg::PoseStamped cur;
-      {
-        std::lock_guard<std::mutex> lk(mg_mutex_);
-        cur = move_group_->getCurrentPose();
-      }
-
-      Eigen::Quaterniond q_cur;
-      tf2::fromMsg(cur.pose.orientation, q_cur);
-
-      // 将平移量从工具坐标系旋转到基坐标系
-      Eigen::Vector3d delta_tool(dx / 1000.0, dy / 1000.0, dz / 1000.0);
-      Eigen::Vector3d delta_base = q_cur * delta_tool;
-
-      geometry_msgs::msg::Pose target = cur.pose;
-      target.position.x += delta_base.x();
-      target.position.y += delta_base.y();
-      target.position.z += delta_base.z();
-
-      // 在工具坐标系下施加旋转：q_new = q_cur * q_delta
-      Eigen::Quaterniond q_delta =
-        Eigen::AngleAxisd(drz * (M_PI / 180.0), Eigen::Vector3d::UnitZ()) *
-        Eigen::AngleAxisd(dry * (M_PI / 180.0), Eigen::Vector3d::UnitY()) *
-        Eigen::AngleAxisd(drx * (M_PI / 180.0), Eigen::Vector3d::UnitX());
-      target.orientation = tf2::toMsg(q_cur * q_delta);
-
-      std::vector<geometry_msgs::msg::Pose> waypoints = {target};
-      moveit_msgs::msg::RobotTrajectory trajectory;
-
-      std::lock_guard<std::mutex> lk(mg_mutex_);
-      double fraction = move_group_->computeCartesianPath(waypoints, step, trajectory);
-      if (fraction < 0.9) {
-        RCLCPP_WARN(get_logger(),
-          "工具坐标系相对直线规划完成率过低: %.1f%%", fraction * 100.0);
+        RCLCPP_WARN(get_logger(), "MoveLRel 规划完成率过低: %.1f%%", fraction * 100.0);
         return false;
       }
       moveit::planning_interface::MoveGroupInterface::Plan plan;
       plan.trajectory = trajectory;
       auto ret = move_group_->execute(plan);
       bool ok = (ret == moveit::core::MoveItErrorCode::SUCCESS);
-      RCLCPP_INFO(get_logger(), "move_linear_relative_tool -> %s", ok ? "成功" : "失败");
+      RCLCPP_INFO(get_logger(), "MoveLRel -> %s", ok ? "成功" : "失败");
+      return ok;
+    });
+
+  // MoveLRelTool(dx,dy,dz,drx,dry,drz [,step])
+  //   增量在工具坐标系下表达：平移旋转至基坐标系后叠加，旋转 q_new = q_cur * q_delta
+  //   mm, deg，step mm 默认 10，返回 bool
+  lua_.set_function("MoveLRelTool",
+    [this](double dx, double dy, double dz,
+           double drx, double dry, double drz,
+           sol::optional<double> step_opt) -> bool
+    {
+      if (!init_move_group()) return false;
+      double step = step_opt.value_or(10.0) / 1000.0;
+      geometry_msgs::msg::PoseStamped cur;
+      {
+        std::lock_guard<std::mutex> lk(mg_mutex_);
+        cur = move_group_->getCurrentPose();
+      }
+      Eigen::Quaterniond q_cur;
+      tf2::fromMsg(cur.pose.orientation, q_cur);
+      Eigen::Vector3d delta_base = q_cur * Eigen::Vector3d(dx/1000.0, dy/1000.0, dz/1000.0);
+      geometry_msgs::msg::Pose target = cur.pose;
+      target.position.x += delta_base.x();
+      target.position.y += delta_base.y();
+      target.position.z += delta_base.z();
+      Eigen::Quaterniond q_delta =
+        Eigen::AngleAxisd(drz * (M_PI/180.0), Eigen::Vector3d::UnitZ()) *
+        Eigen::AngleAxisd(dry * (M_PI/180.0), Eigen::Vector3d::UnitY()) *
+        Eigen::AngleAxisd(drx * (M_PI/180.0), Eigen::Vector3d::UnitX());
+      target.orientation = tf2::toMsg(q_cur * q_delta);
+      std::vector<geometry_msgs::msg::Pose> waypoints = {target};
+      moveit_msgs::msg::RobotTrajectory trajectory;
+      std::lock_guard<std::mutex> lk(mg_mutex_);
+      double fraction = move_group_->computeCartesianPath(waypoints, step, trajectory);
+      if (fraction < 0.9) {
+        RCLCPP_WARN(get_logger(), "MoveLRelTool 规划完成率过低: %.1f%%", fraction * 100.0);
+        return false;
+      }
+      moveit::planning_interface::MoveGroupInterface::Plan plan;
+      plan.trajectory = trajectory;
+      auto ret = move_group_->execute(plan);
+      bool ok = (ret == moveit::core::MoveItErrorCode::SUCCESS);
+      RCLCPP_INFO(get_logger(), "MoveLRelTool -> %s", ok ? "成功" : "失败");
       return ok;
     });
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 五、规划参数设置
+  // 四、规划参数设置
   // ══════════════════════════════════════════════════════════════════════════
 
-  R.set_function("set_velocity_scaling", [this](double f) {
+  // SetVelScale(f)  [0.01, 1.0]
+  lua_.set_function("SetVelScale", [this](double f) {
     const double clamped = std::clamp(f, 0.01, 1.0);
     global_ratio_.store(clamped * 100.0);
     if (!init_move_group()) return;
@@ -603,19 +492,22 @@ void LuaMoveItNode::setup_lua_api()
     move_group_->setMaxVelocityScalingFactor(clamped);
   });
 
-  R.set_function("set_acceleration_scaling", [this](double f) {
+  // SetAccScale(f)  [0.01, 1.0]
+  lua_.set_function("SetAccScale", [this](double f) {
     if (!init_move_group()) return;
     std::lock_guard<std::mutex> lk(mg_mutex_);
     move_group_->setMaxAccelerationScalingFactor(std::clamp(f, 0.01, 1.0));
   });
 
-  R.set_function("set_planning_time", [this](double t) {
+  // SetPlanTime(t)  seconds
+  lua_.set_function("SetPlanTime", [this](double t) {
     if (!init_move_group()) return;
     std::lock_guard<std::mutex> lk(mg_mutex_);
     move_group_->setPlanningTime(t);
   });
 
-  R.set_function("set_planner", [this](const std::string& planner_id) {
+  // SetPlanner(id)
+  lua_.set_function("SetPlanner", [this](const std::string& planner_id) {
     if (!init_move_group()) return;
     std::lock_guard<std::mutex> lk(mg_mutex_);
     move_group_->setPlannerId(planner_id);
@@ -623,13 +515,11 @@ void LuaMoveItNode::setup_lua_api()
   });
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 六、状态查询
+  // 五、状态查询
   // ══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * robot.get_joint_positions()  — 返回 table {j1..j6}，单位 deg
-   */
-  R.set_function("get_joint_positions", [this]() -> sol::table {
+  // GetJoints() → {j1..j6} deg
+  lua_.set_function("GetJoints", [this]() -> sol::table {
     if (!init_move_group()) return lua_.create_table();
     std::lock_guard<std::mutex> lk(mg_mutex_);
     auto vals = move_group_->getCurrentJointValues();
@@ -638,96 +528,47 @@ void LuaMoveItNode::setup_lua_api()
     return t;
   });
 
-  /**
-   * robot.get_current_pose()  — 返回 table {x, y, z, qx, qy, qz, qw}，x/y/z 单位 mm
-   */
-  R.set_function("get_current_pose", [this]() -> sol::table {
-    if (!init_move_group()) return lua_.create_table();
-    std::lock_guard<std::mutex> lk(mg_mutex_);
-    auto ps = move_group_->getCurrentPose();
-    auto& p = ps.pose;
-    sol::table t = lua_.create_table();
-    t["x"]  = p.position.x*1000.0; t["y"]  = p.position.y*1000.0; t["z"]  = p.position.z*1000.0;
-    t["qx"] = p.orientation.x; t["qy"] = p.orientation.y;
-    t["qz"] = p.orientation.z; t["qw"] = p.orientation.w;
-    return t;
-  });
-
-  /**
-   * robot.get_current_rpy()  — 返回 table {roll, pitch, yaw}，单位 deg
-   */
-  R.set_function("get_current_rpy", [this]() -> sol::table {
+  // GetPose() → {x, y, z, roll, pitch, yaw}  mm, deg
+  lua_.set_function("GetPose", [this]() -> sol::table {
     if (!init_move_group()) return lua_.create_table();
     std::lock_guard<std::mutex> lk(mg_mutex_);
     auto ps = move_group_->getCurrentPose();
     Eigen::Quaterniond q;
     tf2::fromMsg(ps.pose.orientation, q);
-    auto euler = q.toRotationMatrix().eulerAngles(2, 1, 0); // ZYX -> yaw, pitch, roll
+    auto euler = q.toRotationMatrix().eulerAngles(2, 1, 0); // ZYX → yaw, pitch, roll
     sol::table t = lua_.create_table();
-    t["roll"]  = euler[2] * (180.0 / M_PI);
-    t["pitch"] = euler[1] * (180.0 / M_PI);
-    t["yaw"]   = euler[0] * (180.0 / M_PI);
+    t[1] = ps.pose.position.x * 1000.0;
+    t[2] = ps.pose.position.y * 1000.0;
+    t[3] = ps.pose.position.z * 1000.0;
+    t[4] = euler[2] * (180.0 / M_PI);  // roll
+    t[5] = euler[1] * (180.0 / M_PI);  // pitch
+    t[6] = euler[0] * (180.0 / M_PI);  // yaw
     return t;
   });
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 七、实用工具
+  // 六、实用工具
   // ══════════════════════════════════════════════════════════════════════════
 
-  R.set_function("sleep", [](double s) {
+  // Sleep(ms)
+  lua_.set_function("Sleep", [](double ms) {
     rclcpp::sleep_for(std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::duration<double>(s)));
+      std::chrono::duration<double>(ms / 1000.0)));
   });
 
-  R.set_function("log",       [this](const std::string& m) {
+  lua_.set_function("Log",      [this](const std::string& m) {
     RCLCPP_INFO (get_logger(), "[Lua] %s", m.c_str()); });
-  R.set_function("log_warn",  [this](const std::string& m) {
+  lua_.set_function("LogWarn",  [this](const std::string& m) {
     RCLCPP_WARN (get_logger(), "[Lua] %s", m.c_str()); });
-  R.set_function("log_error", [this](const std::string& m) {
+  lua_.set_function("LogError", [this](const std::string& m) {
     RCLCPP_ERROR(get_logger(), "[Lua] %s", m.c_str()); });
 
-  R.set_function("ok", []() -> bool { return rclcpp::ok(); });
+  // Ok()
+  lua_.set_function("Ok", []() -> bool { return rclcpp::ok(); });
 
   lua_.script(R"(
-    function deg2rad(d) return d * math.pi / 180.0 end
-    function rad2deg(r) return r * 180.0 / math.pi end
-
-    -- 简化全局 API（与 UI 脚本编辑器文档一致）
-    -- 所有单位：位置 mm，角度 deg
-    function GetJoints()
-      local j = robot.get_joint_positions()
-      if not j then return nil end
-      return j  -- 已为 deg
-    end
-
-    function GetPose()
-      local p   = robot.get_current_pose()
-      local rpy = robot.get_current_rpy()
-      if not p then return nil end
-      return {p.x, p.y, p.z, rpy.roll, rpy.pitch, rpy.yaw}
-    end
-
-    function PTP(joints)
-      return robot.move_to_joints(joints) and 0 or -1
-    end
-
-    function Lin(pose)
-      return robot.move_linear_rpy(
-        pose[1], pose[2], pose[3],
-        pose[4], pose[5], pose[6]
-      ) and 0 or -1
-    end
-
-    function Sleep(ms)
-      robot.sleep(ms / 1000.0)
-    end
-
-    function LinRelTool(delta)
-      return robot.move_linear_relative_tool(
-        delta[1], delta[2], delta[3],
-        delta[4], delta[5], delta[6]
-      ) and 0 or -1
-    end
+    function DegRad(d) return d * math.pi / 180.0 end
+    function RadDeg(r) return r * 180.0 / math.pi end
   )");
 }
 

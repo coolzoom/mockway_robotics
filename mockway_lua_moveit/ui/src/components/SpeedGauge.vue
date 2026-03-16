@@ -29,7 +29,7 @@ async function sendRatio(value) {
     await fetch('/api/lua', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ script: `robot.set_velocity_scaling(${value / 100})` })
+      body: JSON.stringify({ script: `SetVelScale(${value / 100})` })
     })
   } catch (e) {
     console.error('Failed to set global ratio:', e)

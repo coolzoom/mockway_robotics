@@ -59,135 +59,131 @@ function buildTable(block, labels) {
 
 // ======================== Servo Blocks ========================
 
-luaGenerator.forBlock['robot_switch_servo_mode'] = function (block) {
+luaGenerator.forBlock['robot_servo_mode'] = function (block) {
   const mode = block.getFieldValue('MODE')
-  return `robot.switch_servo_mode("${mode}")\n`
+  return `ServoMode("${mode}")\n`
 }
 
 luaGenerator.forBlock['robot_servo_joint'] = function (block) {
   const index = block.getFieldValue('INDEX')
   const vel = valueToCode(block, 'VEL', Order.NONE)
-  return `robot.servo_joint(${index}, ${vel})\n`
+  return `ServoJoint(${index}, ${vel})\n`
 }
 
 luaGenerator.forBlock['robot_servo_joints'] = function (block) {
   const table = buildTable(block, ['V1','V2','V3','V4','V5','V6'])
-  return `robot.servo_joints(${table})\n`
+  return `ServoJoints(${table})\n`
 }
 
-luaGenerator.forBlock['robot_servo_cartesian'] = function (block) {
+luaGenerator.forBlock['robot_servo_cart'] = function (block) {
   const vals = ['VX','VY','VZ','RX','RY','RZ'].map(l => valueToCode(block, l, Order.NONE))
-  return `robot.servo_cartesian(${vals.join(', ')})\n`
+  return `ServoCart(${vals.join(', ')})\n`
 }
 
 luaGenerator.forBlock['robot_servo_stop'] = function () {
-  return 'robot.servo_stop()\n'
+  return 'ServoStop()\n'
 }
 
 // ======================== PTP Motion Blocks ========================
 
-luaGenerator.forBlock['robot_move_to_named'] = function (block) {
+luaGenerator.forBlock['robot_move_named'] = function (block) {
   const name = block.getFieldValue('NAME')
-  return `robot.move_to_named("${name}")\n`
+  return `MoveNamed("${name}")\n`
 }
 
-luaGenerator.forBlock['robot_move_to_joints'] = function (block) {
+luaGenerator.forBlock['robot_move_j'] = function (block) {
   const table = buildTable(block, ['J1','J2','J3','J4','J5','J6'])
-  return `robot.move_to_joints(${table})\n`
+  return `MoveJ(${table})\n`
 }
 
-luaGenerator.forBlock['robot_move_to_pose_rpy'] = function (block) {
+luaGenerator.forBlock['robot_move_pose'] = function (block) {
   const vals = ['X','Y','Z','Roll','Pitch','Yaw'].map(l => valueToCode(block, l, Order.NONE))
-  return `robot.move_to_pose_rpy(${vals.join(', ')})\n`
+  return `MovePose(${vals.join(', ')})\n`
 }
 
 // ======================== Linear Motion Blocks ========================
 
-luaGenerator.forBlock['robot_move_linear_rpy'] = function (block) {
+luaGenerator.forBlock['robot_move_l'] = function (block) {
   const vals = ['X','Y','Z','Roll','Pitch','Yaw'].map(l => valueToCode(block, l, Order.NONE))
-  return `robot.move_linear_rpy(${vals.join(', ')})\n`
+  return `MoveL(${vals.join(', ')})\n`
 }
 
-luaGenerator.forBlock['robot_move_linear_relative'] = function (block) {
+luaGenerator.forBlock['robot_move_l_rel'] = function (block) {
   const vals = ['DX','DY','DZ','DRX','DRY','DRZ'].map(l => valueToCode(block, l, Order.NONE))
-  return `robot.move_linear_relative(${vals.join(', ')})\n`
+  return `MoveLRel(${vals.join(', ')})\n`
 }
 
-luaGenerator.forBlock['robot_move_linear_relative_tool'] = function (block) {
+luaGenerator.forBlock['robot_move_l_rel_tool'] = function (block) {
   const vals = ['DX','DY','DZ','DRX','DRY','DRZ'].map(l => valueToCode(block, l, Order.NONE))
-  return `robot.move_linear_relative_tool(${vals.join(', ')})\n`
+  return `MoveLRelTool(${vals.join(', ')})\n`
 }
 
 // ======================== Parameter Blocks ========================
 
-luaGenerator.forBlock['robot_set_velocity_scaling'] = function (block) {
+luaGenerator.forBlock['robot_set_vel_scale'] = function (block) {
   const factor = valueToCode(block, 'FACTOR', Order.NONE)
-  return `robot.set_velocity_scaling(${factor})\n`
+  return `SetVelScale(${factor})\n`
 }
 
-luaGenerator.forBlock['robot_set_acceleration_scaling'] = function (block) {
+luaGenerator.forBlock['robot_set_acc_scale'] = function (block) {
   const factor = valueToCode(block, 'FACTOR', Order.NONE)
-  return `robot.set_acceleration_scaling(${factor})\n`
+  return `SetAccScale(${factor})\n`
 }
 
-luaGenerator.forBlock['robot_set_planning_time'] = function (block) {
+luaGenerator.forBlock['robot_set_plan_time'] = function (block) {
   const seconds = valueToCode(block, 'SECONDS', Order.NONE)
-  return `robot.set_planning_time(${seconds})\n`
+  return `SetPlanTime(${seconds})\n`
 }
 
 luaGenerator.forBlock['robot_set_planner'] = function (block) {
   const planner = block.getFieldValue('PLANNER')
-  return `robot.set_planner("${planner}")\n`
+  return `SetPlanner("${planner}")\n`
 }
 
 // ======================== Status Blocks ========================
 
-luaGenerator.forBlock['robot_get_joint_positions'] = function () {
-  return ['robot.get_joint_positions()', Order.ATOMIC]
+luaGenerator.forBlock['robot_get_joints'] = function () {
+  return ['GetJoints()', Order.ATOMIC]
 }
 
-luaGenerator.forBlock['robot_get_current_pose'] = function () {
-  return ['robot.get_current_pose()', Order.ATOMIC]
-}
-
-luaGenerator.forBlock['robot_get_current_rpy'] = function () {
-  return ['robot.get_current_rpy()', Order.ATOMIC]
+luaGenerator.forBlock['robot_get_pose'] = function () {
+  return ['GetPose()', Order.ATOMIC]
 }
 
 // ======================== Tool Blocks ========================
 
 luaGenerator.forBlock['robot_sleep'] = function (block) {
-  const seconds = valueToCode(block, 'SECONDS', Order.NONE)
-  return `robot.sleep(${seconds})\n`
+  const ms = valueToCode(block, 'MS', Order.NONE)
+  return `Sleep(${ms})\n`
 }
 
 luaGenerator.forBlock['robot_log'] = function (block) {
   const msg = valueToCode(block, 'MSG', Order.NONE)
-  return `robot.log(${msg})\n`
+  return `Log(${msg})\n`
 }
 
 luaGenerator.forBlock['robot_log_warn'] = function (block) {
   const msg = valueToCode(block, 'MSG', Order.NONE)
-  return `robot.log_warn(${msg})\n`
+  return `LogWarn(${msg})\n`
 }
 
 luaGenerator.forBlock['robot_log_error'] = function (block) {
   const msg = valueToCode(block, 'MSG', Order.NONE)
-  return `robot.log_error(${msg})\n`
+  return `LogError(${msg})\n`
 }
 
 luaGenerator.forBlock['robot_ok'] = function () {
-  return ['robot.ok()', Order.ATOMIC]
+  return ['Ok()', Order.ATOMIC]
 }
 
-luaGenerator.forBlock['robot_deg2rad'] = function (block) {
+luaGenerator.forBlock['robot_deg_rad'] = function (block) {
   const deg = valueToCode(block, 'DEG', Order.NONE)
-  return [`deg2rad(${deg})`, Order.ATOMIC]
+  return [`DegRad(${deg})`, Order.ATOMIC]
 }
 
-luaGenerator.forBlock['robot_rad2deg'] = function (block) {
+luaGenerator.forBlock['robot_rad_deg'] = function (block) {
   const rad = valueToCode(block, 'RAD', Order.NONE)
-  return [`rad2deg(${rad})`, Order.ATOMIC]
+  return [`RadDeg(${rad})`, Order.ATOMIC]
 }
 
 luaGenerator.forBlock['robot_print'] = function (block) {

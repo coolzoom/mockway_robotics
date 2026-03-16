@@ -10,10 +10,10 @@ const DATA_HUE   = 230   // grey-blue
 
 // ======================== Servo Blocks ========================
 
-Blockly.Blocks['robot_switch_servo_mode'] = {
+Blockly.Blocks['robot_servo_mode'] = {
   init() {
     this.appendDummyInput()
-      .appendField('SwitchServoMode')
+      .appendField('ServoMode')
       .appendField(new Blockly.FieldDropdown([
         ['joint_jog', 'joint_jog'],
         ['twist',     'twist']
@@ -21,7 +21,7 @@ Blockly.Blocks['robot_switch_servo_mode'] = {
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(SERVO_HUE)
-    this.setTooltip('Switch servo command type: joint_jog or twist')
+    this.setTooltip('ServoMode(mode) — switch servo command type: joint_jog or twist')
   }
 }
 
@@ -32,12 +32,12 @@ Blockly.Blocks['robot_servo_joint'] = {
       .appendField(new Blockly.FieldDropdown([
         ['1','1'],['2','2'],['3','3'],['4','4'],['5','5'],['6','6']
       ]), 'INDEX')
-    this.appendValueInput('VEL').setCheck('Number').appendField('vel')
+    this.appendValueInput('VEL').setCheck('Number').appendField('vel deg/s')
     this.setInputsInline(true)
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(SERVO_HUE)
-    this.setTooltip('Single joint velocity jog (rad/s). Non-blocking.')
+    this.setTooltip('ServoJoint(idx, vel) — single joint velocity jog (deg/s). Non-blocking.')
   }
 }
 
@@ -51,13 +51,13 @@ Blockly.Blocks['robot_servo_joints'] = {
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(SERVO_HUE)
-    this.setTooltip('6-axis simultaneous velocity jog {v1..v6} (rad/s). Non-blocking.')
+    this.setTooltip('ServoJoints({v1..v6}) — 6-axis velocity jog (deg/s). Non-blocking.')
   }
 }
 
-Blockly.Blocks['robot_servo_cartesian'] = {
+Blockly.Blocks['robot_servo_cart'] = {
   init() {
-    this.appendValueInput('VX').setCheck('Number').appendField('ServoCartesian  Vx')
+    this.appendValueInput('VX').setCheck('Number').appendField('ServoCart  Vx')
     ;['VY','VZ','RX','RY','RZ'].forEach(l => {
       this.appendValueInput(l).setCheck('Number').appendField(l)
     })
@@ -65,7 +65,7 @@ Blockly.Blocks['robot_servo_cartesian'] = {
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(SERVO_HUE)
-    this.setTooltip('Cartesian velocity jog: Vx/Vy/Vz (m/s), Rx/Ry/Rz (rad/s). Non-blocking.')
+    this.setTooltip('ServoCart(vx,vy,vz,rx,ry,rz) — Cartesian velocity jog: Vx/Vy/Vz mm/s, Rx/Ry/Rz deg/s. Non-blocking.')
   }
 }
 
@@ -75,27 +75,27 @@ Blockly.Blocks['robot_servo_stop'] = {
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(SERVO_HUE)
-    this.setTooltip('Stop servo motion by publishing zero velocity')
+    this.setTooltip('ServoStop() — stop servo motion by publishing zero velocity')
   }
 }
 
 // ======================== PTP Motion Blocks ========================
 
-Blockly.Blocks['robot_move_to_named'] = {
+Blockly.Blocks['robot_move_named'] = {
   init() {
     this.appendDummyInput()
-      .appendField('MoveToNamed')
+      .appendField('MoveNamed')
       .appendField(new Blockly.FieldTextInput('home'), 'NAME')
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(MOTION_HUE)
-    this.setTooltip('PTP motion to SRDF named state (blocking)')
+    this.setTooltip('MoveNamed(name) — PTP motion to SRDF named state (blocking)')
   }
 }
 
-Blockly.Blocks['robot_move_to_joints'] = {
+Blockly.Blocks['robot_move_j'] = {
   init() {
-    this.appendValueInput('J1').setCheck('Number').appendField('MoveToJoints  J1')
+    this.appendValueInput('J1').setCheck('Number').appendField('MoveJ  J1')
     ;['J2','J3','J4','J5','J6'].forEach(l => {
       this.appendValueInput(l).setCheck('Number').appendField(l)
     })
@@ -103,13 +103,13 @@ Blockly.Blocks['robot_move_to_joints'] = {
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(MOTION_HUE)
-    this.setTooltip('PTP motion to joint positions (rad, blocking)')
+    this.setTooltip('MoveJ({j1..j6}) — PTP motion to joint positions (deg, blocking)')
   }
 }
 
-Blockly.Blocks['robot_move_to_pose_rpy'] = {
+Blockly.Blocks['robot_move_pose'] = {
   init() {
-    this.appendValueInput('X').setCheck('Number').appendField('MoveToPoseRPY  X')
+    this.appendValueInput('X').setCheck('Number').appendField('MovePose  X')
     ;['Y','Z','Roll','Pitch','Yaw'].forEach(l => {
       this.appendValueInput(l).setCheck('Number').appendField(l)
     })
@@ -117,15 +117,15 @@ Blockly.Blocks['robot_move_to_pose_rpy'] = {
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(MOTION_HUE)
-    this.setTooltip('PTP to Cartesian pose: X/Y/Z (m), Roll/Pitch/Yaw (rad, blocking)')
+    this.setTooltip('MovePose(x,y,z,roll,pitch,yaw) — PTP to Cartesian pose (mm, deg, blocking)')
   }
 }
 
 // ======================== Linear Motion Blocks ========================
 
-Blockly.Blocks['robot_move_linear_rpy'] = {
+Blockly.Blocks['robot_move_l'] = {
   init() {
-    this.appendValueInput('X').setCheck('Number').appendField('MoveLinearRPY  X')
+    this.appendValueInput('X').setCheck('Number').appendField('MoveL  X')
     ;['Y','Z','Roll','Pitch','Yaw'].forEach(l => {
       this.appendValueInput(l).setCheck('Number').appendField(l)
     })
@@ -133,13 +133,13 @@ Blockly.Blocks['robot_move_linear_rpy'] = {
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(MOTION_HUE)
-    this.setTooltip('Linear motion to Cartesian pose: X/Y/Z (m), Roll/Pitch/Yaw (rad, blocking)')
+    this.setTooltip('MoveL(x,y,z,roll,pitch,yaw) — linear motion to Cartesian pose (mm, deg, blocking)')
   }
 }
 
-Blockly.Blocks['robot_move_linear_relative'] = {
+Blockly.Blocks['robot_move_l_rel'] = {
   init() {
-    this.appendValueInput('DX').setCheck('Number').appendField('MoveLinearRel  dX')
+    this.appendValueInput('DX').setCheck('Number').appendField('MoveLRel  dX')
     ;['DY','DZ','DRX','DRY','DRZ'].forEach(l => {
       this.appendValueInput(l).setCheck('Number').appendField(l)
     })
@@ -147,13 +147,13 @@ Blockly.Blocks['robot_move_linear_relative'] = {
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(MOTION_HUE)
-    this.setTooltip('Relative linear motion in base frame: dX/dY/dZ (mm), dRx/dRy/dRz (deg, blocking)')
+    this.setTooltip('MoveLRel(dx,dy,dz,drx,dry,drz) — relative linear in base frame (mm, deg, blocking)')
   }
 }
 
-Blockly.Blocks['robot_move_linear_relative_tool'] = {
+Blockly.Blocks['robot_move_l_rel_tool'] = {
   init() {
-    this.appendValueInput('DX').setCheck('Number').appendField('MoveLinearRelTool  dX')
+    this.appendValueInput('DX').setCheck('Number').appendField('MoveLRelTool  dX')
     ;['DY','DZ','DRX','DRY','DRZ'].forEach(l => {
       this.appendValueInput(l).setCheck('Number').appendField(l)
     })
@@ -161,41 +161,41 @@ Blockly.Blocks['robot_move_linear_relative_tool'] = {
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(MOTION_HUE)
-    this.setTooltip('Relative linear motion in tool frame: dX/dY/dZ (mm), dRx/dRy/dRz (deg, blocking). Delta is expressed in the end-effector coordinate system.')
+    this.setTooltip('MoveLRelTool(dx,dy,dz,drx,dry,drz) — relative linear in tool frame (mm, deg, blocking)')
   }
 }
 
 // ======================== Parameter Blocks ========================
 
-Blockly.Blocks['robot_set_velocity_scaling'] = {
+Blockly.Blocks['robot_set_vel_scale'] = {
   init() {
-    this.appendValueInput('FACTOR').setCheck('Number').appendField('SetVelocityScaling')
+    this.appendValueInput('FACTOR').setCheck('Number').appendField('SetVelScale')
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(PARAM_HUE)
-    this.setTooltip('Set max velocity scaling factor [0.01, 1.0]')
+    this.setTooltip('SetVelScale(f) — set max velocity scaling factor [0.01, 1.0]')
   }
 }
 
-Blockly.Blocks['robot_set_acceleration_scaling'] = {
+Blockly.Blocks['robot_set_acc_scale'] = {
   init() {
-    this.appendValueInput('FACTOR').setCheck('Number').appendField('SetAccelerationScaling')
+    this.appendValueInput('FACTOR').setCheck('Number').appendField('SetAccScale')
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(PARAM_HUE)
-    this.setTooltip('Set max acceleration scaling factor [0.01, 1.0]')
+    this.setTooltip('SetAccScale(f) — set max acceleration scaling factor [0.01, 1.0]')
   }
 }
 
-Blockly.Blocks['robot_set_planning_time'] = {
+Blockly.Blocks['robot_set_plan_time'] = {
   init() {
-    this.appendValueInput('SECONDS').setCheck('Number').appendField('SetPlanningTime')
+    this.appendValueInput('SECONDS').setCheck('Number').appendField('SetPlanTime')
     this.appendDummyInput().appendField('s')
     this.setInputsInline(true)
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(PARAM_HUE)
-    this.setTooltip('Set planning timeout (seconds)')
+    this.setTooltip('SetPlanTime(t) — set planning timeout (seconds)')
   }
 }
 
@@ -214,36 +214,27 @@ Blockly.Blocks['robot_set_planner'] = {
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(PARAM_HUE)
-    this.setTooltip('Switch motion planner (e.g. RRTConnect, LIN for Pilz linear)')
+    this.setTooltip('SetPlanner(id) — switch motion planner')
   }
 }
 
 // ======================== Status Blocks ========================
 
-Blockly.Blocks['robot_get_joint_positions'] = {
+Blockly.Blocks['robot_get_joints'] = {
   init() {
-    this.appendDummyInput().appendField('GetJointPositions()')
+    this.appendDummyInput().appendField('GetJoints()')
     this.setOutput(true, null)
     this.setColour(STATUS_HUE)
-    this.setTooltip('Get current joint positions as table {j1..j6} (rad)')
+    this.setTooltip('GetJoints() — current joint positions as {j1..j6} (deg)')
   }
 }
 
-Blockly.Blocks['robot_get_current_pose'] = {
+Blockly.Blocks['robot_get_pose'] = {
   init() {
-    this.appendDummyInput().appendField('GetCurrentPose()')
+    this.appendDummyInput().appendField('GetPose()')
     this.setOutput(true, null)
     this.setColour(STATUS_HUE)
-    this.setTooltip('Get current end-effector pose (quaternion) as table {x,y,z,qx,qy,qz,qw}')
-  }
-}
-
-Blockly.Blocks['robot_get_current_rpy'] = {
-  init() {
-    this.appendDummyInput().appendField('GetCurrentRPY()')
-    this.setOutput(true, null)
-    this.setColour(STATUS_HUE)
-    this.setTooltip('Get current end-effector pose (RPY) as table {roll, pitch, yaw} (rad)')
+    this.setTooltip('GetPose() — current end-effector pose as {x,y,z,roll,pitch,yaw} (mm, deg)')
   }
 }
 
@@ -251,75 +242,75 @@ Blockly.Blocks['robot_get_current_rpy'] = {
 
 Blockly.Blocks['robot_sleep'] = {
   init() {
-    this.appendValueInput('SECONDS').setCheck('Number').appendField('Sleep')
-    this.appendDummyInput().appendField('s')
+    this.appendValueInput('MS').setCheck('Number').appendField('Sleep')
+    this.appendDummyInput().appendField('ms')
     this.setInputsInline(true)
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(TOOL_HUE)
-    this.setTooltip('Pause execution (seconds)')
+    this.setTooltip('Sleep(ms) — pause execution (milliseconds)')
   }
 }
 
 Blockly.Blocks['robot_log'] = {
   init() {
-    this.appendValueInput('MSG').setCheck(null).appendField('log')
+    this.appendValueInput('MSG').setCheck(null).appendField('Log')
     this.setInputsInline(true)
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(TOOL_HUE)
-    this.setTooltip('Output ROS INFO log message')
+    this.setTooltip('Log(msg) — output ROS INFO log message')
   }
 }
 
 Blockly.Blocks['robot_log_warn'] = {
   init() {
-    this.appendValueInput('MSG').setCheck(null).appendField('log_warn')
+    this.appendValueInput('MSG').setCheck(null).appendField('LogWarn')
     this.setInputsInline(true)
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(TOOL_HUE)
-    this.setTooltip('Output ROS WARN log message')
+    this.setTooltip('LogWarn(msg) — output ROS WARN log message')
   }
 }
 
 Blockly.Blocks['robot_log_error'] = {
   init() {
-    this.appendValueInput('MSG').setCheck(null).appendField('log_error')
+    this.appendValueInput('MSG').setCheck(null).appendField('LogError')
     this.setInputsInline(true)
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(TOOL_HUE)
-    this.setTooltip('Output ROS ERROR log message')
+    this.setTooltip('LogError(msg) — output ROS ERROR log message')
   }
 }
 
 Blockly.Blocks['robot_ok'] = {
   init() {
-    this.appendDummyInput().appendField('robot.ok()')
+    this.appendDummyInput().appendField('Ok()')
     this.setOutput(true, 'Boolean')
     this.setColour(TOOL_HUE)
-    this.setTooltip('Returns true while ROS node is running — use as while-loop condition')
+    this.setTooltip('Ok() — returns true while ROS node is running (use as while-loop condition)')
   }
 }
 
-Blockly.Blocks['robot_deg2rad'] = {
+Blockly.Blocks['robot_deg_rad'] = {
   init() {
-    this.appendValueInput('DEG').setCheck('Number').appendField('deg2rad')
+    this.appendValueInput('DEG').setCheck('Number').appendField('DegRad')
     this.setInputsInline(true)
     this.setOutput(true, 'Number')
     this.setColour(TOOL_HUE)
-    this.setTooltip('Convert degrees to radians')
+    this.setTooltip('DegRad(d) — convert degrees to radians')
   }
 }
 
-Blockly.Blocks['robot_rad2deg'] = {
+Blockly.Blocks['robot_rad_deg'] = {
   init() {
-    this.appendValueInput('RAD').setCheck('Number').appendField('rad2deg')
+    this.appendValueInput('RAD').setCheck('Number').appendField('RadDeg')
     this.setInputsInline(true)
     this.setOutput(true, 'Number')
     this.setColour(TOOL_HUE)
-    this.setTooltip('Convert radians to degrees')
+    this.setTooltip('RadDeg(r) — convert radians to degrees')
   }
 }
 
@@ -330,7 +321,7 @@ Blockly.Blocks['robot_print'] = {
     this.setPreviousStatement(true, null)
     this.setNextStatement(true, null)
     this.setColour(TOOL_HUE)
-    this.setTooltip('Print value to stdout')
+    this.setTooltip('print(v) — print value to output')
   }
 }
 

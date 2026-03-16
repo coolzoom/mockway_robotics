@@ -49,7 +49,7 @@ function setMode(m) {
   mode.value = m
   if (m === 'jog') {
     const servoMode = space.value === 'joint' ? 'joint_jog' : 'twist'
-    sendLua(`robot.switch_servo_mode("${servoMode}")`)
+    sendLua(`ServoMode("${servoMode}")`)
   }
 }
 
@@ -57,7 +57,7 @@ function setSpace(s) {
   space.value = s
   if (mode.value === 'jog') {
     const servoMode = s === 'joint' ? 'joint_jog' : 'twist'
-    sendLua(`robot.switch_servo_mode("${servoMode}")`)
+    sendLua(`ServoMode("${servoMode}")`)
   }
 }
 
@@ -72,7 +72,7 @@ function handlePress(index, direction) {
   if (mode.value === 'jog') {
     const sendJogCmd = () => {
       if (space.value === 'joint') {
-        sendLua(`robot.servo_joint(${idx}, ${dir * JOG_JOINT_VEL})`)
+        sendLua(`ServoJoint(${idx}, ${dir * JOG_JOINT_VEL})`)
       } else {
         const vx  = idx === 1 ? dir * JOG_LIN_VEL : 0
         const vy  = idx === 2 ? dir * JOG_LIN_VEL : 0
@@ -80,7 +80,7 @@ function handlePress(index, direction) {
         const rx  = idx === 4 ? dir * JOG_ROT_VEL : 0
         const ry  = idx === 5 ? dir * JOG_ROT_VEL : 0
         const rz  = idx === 6 ? dir * JOG_ROT_VEL : 0
-        sendLua(`robot.servo_cartesian(${vx}, ${vy}, ${vz}, ${rx}, ${ry}, ${rz})`)
+        sendLua(`ServoCart(${vx}, ${vy}, ${vz}, ${rx}, ${ry}, ${rz})`)
       }
     }
     sendJogCmd()
@@ -88,7 +88,7 @@ function handlePress(index, direction) {
   } else {
     const dist = inchDistance.value
     if (space.value === 'joint') {
-      sendLua(`local j = robot.get_joint_positions(); j[${idx}] = j[${idx}] + ${dir * dist}; robot.move_to_joints(j)`)
+      sendLua(`local j = GetJoints(); j[${idx}] = j[${idx}] + ${dir * dist}; MoveJ(j)`)
     } else {
       const dx  = idx === 1 ? dir * dist : 0
       const dy  = idx === 2 ? dir * dist : 0
@@ -96,7 +96,7 @@ function handlePress(index, direction) {
       const drx = idx === 4 ? dir * dist : 0
       const dry = idx === 5 ? dir * dist : 0
       const drz = idx === 6 ? dir * dist : 0
-      sendLua(`robot.move_linear_relative(${dx}, ${dy}, ${dz}, ${drx}, ${dry}, ${drz})`)
+      sendLua(`MoveLRel(${dx}, ${dy}, ${dz}, ${drx}, ${dry}, ${drz})`)
     }
   }
 }
@@ -108,7 +108,7 @@ function handleRelease() {
     clearInterval(jogTimer)
     jogTimer = null
   }
-  sendLua('robot.servo_stop()')
+  sendLua('ServoStop()')
 }
 
 function formatValue(val) {
@@ -117,7 +117,7 @@ function formatValue(val) {
 }
 
 onMounted(() => {
-  sendLua('robot.switch_servo_mode("joint_jog")')
+  sendLua('ServoMode("joint_jog")')
 })
 
 onBeforeUnmount(() => {
@@ -127,7 +127,7 @@ onBeforeUnmount(() => {
   }
   if (isMoving.value) {
     isMoving.value = false
-    sendLua('robot.servo_stop()')
+    sendLua('ServoStop()')
   }
 })
 </script>
