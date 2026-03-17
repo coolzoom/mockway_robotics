@@ -5,6 +5,8 @@
 # Optionally override Servo's internal velocity scaling when near singularity or collision (0.0 = use internal velocity scaling)
 # override_velocity_scaling_factor = 0.0 # valid range [0.0:1.0]
 
+incoming_command_timeout: 1.0         # 消息持续时间（秒），无新消息后停止
+
 ## Properties of outgoing commands
 publish_period: 0.01  # 1/Nominal publish rate [seconds]
 max_expected_latency: 0.1  # delay between sending a command and the robot executing it [seconds]
