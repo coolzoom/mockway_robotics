@@ -12,7 +12,7 @@ Mockway 机械臂完整启动：MoveIt（move_group）+ MoveIt Servo + RViz。
   ros2 launch mockway_bringup mockway.launch.py
 
 可选参数：
-  with_rviz  (bool, default true)   — 是否显示 RViz
+  with_rviz  (bool, default false)   — 是否显示 RViz
   with_lua   (bool, default true)   — 是否启动 lua_moveit_node
 """
 
@@ -21,7 +21,7 @@ import os
 import launch
 import launch_ros
 from ament_index_python.packages import get_package_share_directory
-from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch.conditions import IfCondition
@@ -42,7 +42,7 @@ def generate_launch_description():
     # 注意：不使用 "use_rviz" 命名，避免与 demo.launch.py 内部同名参数冲突
     # （IncludeLaunchDescription 的 launch_arguments 会全局覆盖同名 LaunchConfiguration）
     use_rviz_arg = DeclareLaunchArgument(
-        "with_rviz", default_value="true", description="是否启动 RViz"
+        "with_rviz", default_value="false", description="是否启动 RViz"
     )
     use_lua_arg = DeclareLaunchArgument(
         "with_lua", default_value="true", description="是否启动 lua_moveit_node（HTTP Lua 脚本执行节点）"
@@ -138,7 +138,7 @@ def generate_launch_description():
             use_lua_arg,
             use_mock_hardware_arg,
             demo_launch,
-            servo_node,
+            TimerAction(period=10.0, actions=[servo_node]),
             lua_moveit_node,
             rviz_node,
         ]
