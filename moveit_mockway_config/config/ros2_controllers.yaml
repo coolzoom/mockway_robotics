@@ -26,6 +26,7 @@ mockway_group_controller:
       - position
       - velocity
     allow_nonzero_velocity_at_trajectory_end: true
+    open_loop_control: true
 
     # # 目标容差配置 - 解决电机编码器误差导致的超时问题
     # constraints:

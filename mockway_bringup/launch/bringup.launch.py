@@ -1,3 +1,31 @@
+"""
+mockway.launch.py
+
+Mockway 机械臂完整启动：MoveIt（move_group）+ MoveIt Servo + RViz。
+
+  - move_group（MoveIt 主控节点）
+  - static_tf2_broadcaster（发布 world->base_link 静态变换）
+  - robot_state_publisher（发布机器人状态）
+  - ros2_control_node（ros2_control 主控节点，加载控制器配置）
+  - joint_state_broadcaster（ros2_control 控制器，发布关节状态）
+  - mockway_group_controller（ros2_control 控制器，执行运动控制）
+  - container（ComposableNodeContainer，包含 ServoNode、RobotStatePublisher 和 StaticTransformBroadcasterNode）
+  - servo_node（ComposableNode，MoveIt Servo 节点）
+  - static_tf2_broadcaster（ComposableNode，发布 world->base_link 静态变换）
+  - robot_state_publisher（ComposableNode，发布机器人状态）
+  - lua_moveit_node（可选，HTTP Lua 脚本执行节点， 依赖 moveit_config 的 robot_description 等参数）
+  - rviz2（可选，RViz 可视化界面）
+
+启动方式：
+  ros2 launch mockway_bringup mockway.launch.py
+
+可选参数：
+  with_rviz  (bool, default false)   — 是否显示 RViz
+  with_lua   (bool, default true)   — 是否启动 lua_moveit_node
+  use_mock_hardware (bool, default false) — 是否使用 mock_components/GenericSystem 替代真实硬件接口
+  launch_as_standalone_node (bool, default false) — 是否以独立节点方式启动 Servo（而非 component，适用于跨机器部署）
+"""
+
 import os
 import launch
 import launch_ros
