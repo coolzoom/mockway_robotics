@@ -1,11 +1,11 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, defineAsyncComponent } from 'vue'
 import StatusPanel from './components/StatusPanel.vue'
 import GaugeRow from './components/GaugeRow.vue'
 import DragonCapsule from './components/DragonCapsule.vue'
 import OrbitalData from './components/OrbitalData.vue'
 import BottomNav from './components/BottomNav.vue'
-import LuaEditor from './components/LuaEditor.vue'
+const LuaEditor = defineAsyncComponent(() => import('./components/LuaEditor.vue'))
 import ManualControl from './components/ManualControl.vue'
 import SystemSettings from './components/SystemSettings.vue'
 

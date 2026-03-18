@@ -11,5 +11,18 @@ export default defineConfig({
         changeOrigin: true
       }
     }
+  },
+  build: {
+    chunkSizeWarningLimit: 700,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-vue': ['vue'],
+          'vendor-three': ['three'],
+          'vendor-blockly': ['blockly'],
+          'vendor-urdf': ['urdf-loader'],
+        }
+      }
+    }
   }
 })
