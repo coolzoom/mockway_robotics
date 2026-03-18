@@ -11,10 +11,15 @@ from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 
 
 def generate_launch_description():
+    use_mock_hardware_arg = DeclareLaunchArgument(
+        "use_mock_hardware",
+        default_value="false",
+        description="使用 mock_components/GenericSystem 替代真实硬件（dmmotor_hardware_interface/DMMototHardwareInterface）",
+    )
+
     moveit_config = (
         MoveItConfigsBuilder("mockway_description", package_name="moveit_mockway_config")
-        .robot_description(file_path="config/mockway_description.urdf.xacro")
-        .joint_limits(file_path="config/joint_limits.yaml")
+        .robot_description(mappings={"use_mock_hardware": LaunchConfiguration("use_mock_hardware")})
         .to_moveit_configs()
     )
 
@@ -177,10 +182,11 @@ def generate_launch_description():
 
     return launch.LaunchDescription(
         [
+            use_mock_hardware_arg,
             move_group_node,
             use_lua_arg,
             lua_moveit_node,
-            rviz_node,
+            # rviz_node,
             ros2_control_node,
             joint_state_broadcaster_spawner,
             mockway_group_controller_spawner,
