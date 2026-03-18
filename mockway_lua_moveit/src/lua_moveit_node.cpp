@@ -74,6 +74,8 @@ LuaMoveItNode::LuaMoveItNode()
     defaults::TWIST_TOPIC, rclcpp::QoS(10));
   joint_pub_ = create_publisher<control_msgs::msg::JointJog>(
     defaults::JOINT_TOPIC, rclcpp::QoS(10));
+  joint_state_pub_ = create_publisher<sensor_msgs::msg::JointState>(
+    "/joint_states", rclcpp::SensorDataQoS());
 
   servo_mode_client_ = create_client<moveit_msgs::srv::ServoCommandType>(
     "/servo_node/switch_command_type");
@@ -82,9 +84,17 @@ LuaMoveItNode::LuaMoveItNode()
   joint_state_sub_ = create_subscription<sensor_msgs::msg::JointState>(
     "/joint_states", rclcpp::SensorDataQoS(),
     [this](const sensor_msgs::msg::JointState::SharedPtr msg) {
-      std::lock_guard<std::mutex> lk(joint_cache_mutex_);
-      cached_joint_names_     = msg->name;
-      cached_joint_positions_ = msg->position;
+      {
+        std::lock_guard<std::mutex> lk(joint_cache_mutex_);
+        cached_joint_names_     = msg->name;
+        cached_joint_positions_ = msg->position;
+      }
+      if (!joint_state_primed_.exchange(true)) {
+        auto out = std::make_unique<sensor_msgs::msg::JointState>(*msg);
+        out->header.stamp = now();
+        joint_state_pub_->publish(std::move(out));
+        RCLCPP_INFO(get_logger(), "初始关节状态已转发至 /joint_states");
+      }
     });
 
   // ── TF2 缓冲区（用于末端位姿查询） ──────────────────────────────────────
@@ -193,7 +203,7 @@ std::pair<bool, std::string> LuaMoveItNode::run_string_captured(const std::strin
     oss << "\n";
     captured += oss.str();
   };
-  RCLCPP_INFO(get_logger(), "HTTP 执行 Lua 字符串\n%s", code.c_str());
+  // RCLCPP_INFO(get_logger(), "HTTP 执行 Lua 字符串\n%s", code.c_str());
   try {
     lua_.script(code);
     return {true, captured};

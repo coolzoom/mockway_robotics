@@ -53,6 +53,8 @@ private:
   rclcpp::Client<moveit_msgs::srv::ServoCommandType>::SharedPtr  servo_mode_client_;
 
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
+  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr    joint_state_pub_;
+  std::atomic<bool> joint_state_primed_{false};
   std::vector<double> cached_joint_positions_;
   std::vector<std::string> cached_joint_names_;
   mutable std::mutex joint_cache_mutex_;
