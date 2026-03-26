@@ -4,7 +4,7 @@
   # 牧卫机器人
 
   开源六轴协作机械臂系统，包含机械结构、电路和软件
-  
+
 </div>
 
 
@@ -141,7 +141,7 @@ ros2 launch mockway_bringup bringup.launch.py use_mock_hardware:=true
 python tools/motor_gui/motor_gui.py
 ```
 
-<img src="doc/img/calibrate_joint.jpeg" alt="calibrate_joint" style="zoom: 10%;" />
+<img src="doc/img/calibrate_joint.jpg" alt="calibrate_joint" style="zoom: 50%;" />
 
 ### 3. 力矩值验证
 
