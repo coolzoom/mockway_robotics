@@ -115,6 +115,14 @@ ros2 launch mockway_bringup bringup.launch.py use_mock_hardware:=true
 # 浏览器打开前端：http://localhost:8080/
 ```
 
+### 🦞 OpenClaw应用
+
+[应用视频](https://www.bilibili.com/video/BV1hnAjz9ESU/)
+
+1. 将[skill](mockway_lua_moveit\robot_skill.md)文件放到openclaw的workspace目录下
+2. 对话时让大模型学习skill文件中的指令，以及机械臂控制器的IP地址(或主机名)
+3. 用自然语言控制机械臂，如：直线向上移动10厘米
+
 ## 📦 物料清单
 
 详细的物料清单请查看：[BOM.md](doc/BOM.md)
