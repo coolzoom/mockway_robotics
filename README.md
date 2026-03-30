@@ -29,6 +29,8 @@ CAN设备使用[维特USB-CAN模块](https://detail.tmall.com/item.htm?id=598670
 
 [![makerworld](doc/img/makerworld.png)](https://makerworld.com.cn/zh/models/2037149-mockway-kai-yuan-liu-zhou-xie-zuo-ji-jie-bi#profileId-2273199)
 
+[组装指南.md](doc/组装指南.md)
+
 ## 🚀 程序运行
 
 ### 🎮 电机调试
