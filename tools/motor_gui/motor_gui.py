@@ -14,7 +14,7 @@ from tkinter import ttk, messagebox
 import threading
 import time
 import serial.tools.list_ports
-from dm_motor_driver import WitMotionUSBCAN, DMMotor, MotorType
+from dm_motor_driver import create_can_adapter, DMMotor, MotorType
 
 
 class MotorControlGUI:
@@ -95,6 +95,54 @@ class MotorControlGUI:
         else:
             self.port_var.set("")
 
+    def _build_connection_error_hint(self, motor_id: int, master_id: int) -> str:
+        """生成连接失败时的诊断提示"""
+        lines = [
+            "未能接收到电机反馈数据。",
+            "",
+            "请逐项检查：",
+            f"1. USB-CAN 类型：达妙调试助手可用 → 选【达妙 USB-CAN】；维特模块 → 选【维特 USB-CAN】",
+            f"2. COM 口须为 USB-CAN 模块串口，不是电机 GH1.25 调试口",
+            f"3. 电机 ID 与达妙助手 CAN_ID 一致（当前: {motor_id}）",
+            f"4. Master ID 建议 = 电机ID+16（当前: {master_id}，建议: {motor_id + 16}）",
+            "5. 24V 已上电，CAN_H/CAN_L 正确",
+            "6. 串口波特率 921600",
+        ]
+
+        if self.can_adapter:
+            raw_frames = self.can_adapter.collect_raw_frames(1.5)
+            if raw_frames:
+                seen_ids = sorted({frame_id for frame_id, _ in raw_frames})
+                id_text = ", ".join(f"0x{frame_id:X}({frame_id})" for frame_id in seen_ids)
+                lines.extend([
+                    "",
+                    f"已收到 CAN 数据，帧 ID: {id_text}",
+                    f"建议 Master ID 设为: {seen_ids[0]}",
+                ])
+            elif hasattr(self.can_adapter, 'collect_raw_serial'):
+                raw = self.can_adapter.collect_raw_serial(1.0)
+                if raw:
+                    preview = raw[:48].hex(' ')
+                    lines.extend([
+                        "",
+                        f"串口有数据({len(raw)}字节)但未解析为 CAN 帧 — USB-CAN 类型可能选错。",
+                        f"数据预览: {preview}...",
+                        "若预览以 55 aa 开头 → 应选【达妙 USB-CAN】",
+                        "若预览以 41 54 开头(AT) → 应选【维特 USB-CAN】",
+                    ])
+                else:
+                    lines.extend([
+                        "",
+                        "串口无任何数据 — 检查 COM 口、波特率、USB-CAN 是否被达妙助手占用。",
+                    ])
+            else:
+                lines.extend([
+                    "",
+                    "未收到任何 CAN 帧 — 请确认 USB-CAN 模块型号与 COM 口。",
+                ])
+
+        return "\n".join(lines)
+
     def create_widgets(self):
         """创建界面组件"""
 
@@ -129,8 +177,19 @@ class MotorControlGUI:
         # 初始化串口列表
         self.refresh_ports()
 
-        # 第二行：电机类型选择
-        ttk.Label(connection_frame, text="电机类型:").grid(row=1, column=0, sticky="w", pady=(10, 0))
+        # 第二行：USB-CAN 类型与电机类型
+        ttk.Label(connection_frame, text="USB-CAN:").grid(row=1, column=0, sticky="w", pady=(10, 0))
+        self.adapter_var = tk.StringVar(value="达妙 USB-CAN")
+        adapter_combo = ttk.Combobox(
+            connection_frame,
+            textvariable=self.adapter_var,
+            values=["达妙 USB-CAN", "维特 USB-CAN"],
+            state="readonly",
+            width=15,
+        )
+        adapter_combo.grid(row=1, column=1, padx=5, pady=(10, 0), sticky="w")
+
+        ttk.Label(connection_frame, text="电机类型:").grid(row=1, column=2, sticky="w", padx=(20, 0), pady=(10, 0))
         self.motor_type_var = tk.StringVar(value="DM-J4310-2EC")
         motor_type_combo = ttk.Combobox(
             connection_frame,
@@ -139,10 +198,10 @@ class MotorControlGUI:
             state="readonly",
             width=15
         )
-        motor_type_combo.grid(row=1, column=1, columnspan=2, padx=5, pady=(10, 0), sticky="w")
+        motor_type_combo.grid(row=1, column=3, padx=5, pady=(10, 0), sticky="w")
 
         self.connect_btn = ttk.Button(connection_frame, text="连接", command=self.toggle_connection)
-        self.connect_btn.grid(row=1, column=3, columnspan=2, padx=20, pady=(10, 0))
+        self.connect_btn.grid(row=1, column=4, padx=20, pady=(10, 0))
 
         # ===== 电机参数配置区 =====
         param_frame = ttk.LabelFrame(self.root, text="电机参数配置", padding=10)
@@ -150,12 +209,18 @@ class MotorControlGUI:
 
         # 电机ID和Master ID
         ttk.Label(param_frame, text="电机ID:").grid(row=0, column=0, sticky="w")
-        self.motor_id_var = tk.StringVar(value="2")
+        self.motor_id_var = tk.StringVar(value="1")
         ttk.Entry(param_frame, textvariable=self.motor_id_var, width=10).grid(row=0, column=1, padx=5, sticky="w")
 
         ttk.Label(param_frame, text="Master ID:").grid(row=0, column=2, sticky="w", padx=(20, 0))
-        self.master_id_var = tk.StringVar(value="0")
+        self.master_id_var = tk.StringVar(value="17")
         ttk.Entry(param_frame, textvariable=self.master_id_var, width=10).grid(row=0, column=3, padx=5, sticky="w")
+        ttk.Label(
+            param_frame,
+            text="(达妙默认=电机ID+16，如 ID=1 → Master=17；填 0 则自动匹配)",
+            foreground="gray",
+            font=("Arial", 8)
+        ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(4, 0))
 
         # ===== 控制区 =====
         control_frame = ttk.LabelFrame(self.root, text="电机控制", padding=10)
@@ -448,15 +513,16 @@ class MotorControlGUI:
                 else:
                     motor_type = MotorType.DM_J4310_2EC  # 默认值
 
-                # 创建CAN适配器
-                self.can_adapter = WitMotionUSBCAN(
+                # 创建 CAN 适配器（达妙 / 维特）
+                self.can_adapter = create_can_adapter(
+                    self.adapter_var.get(),
                     port=port,
                     baudrate=baudrate,
-                    can_baudrate=1000000
+                    can_baudrate=1000000,
                 )
 
                 if not self.can_adapter.open():
-                    messagebox.showerror("错误", "无法打开USB-CAN适配器")
+                    messagebox.showerror("错误", "无法打开 USB-CAN 适配器")
                     return
 
                 # 创建电机实例，传入电机类型
@@ -470,28 +536,31 @@ class MotorControlGUI:
                 # 等待100ms让通信稳定
                 time.sleep(0.1)
 
-                # 发送清除错误命令
+                # 清除错误并使能电机（达妙电机通常需使能后才开始发送反馈）
                 self.motor.clear_error()
+                time.sleep(0.05)
+                self.motor.enable()
                 self.status_label.config(text="状态: 等待电机反馈...", foreground="orange")
 
-                # 等待接收到至少一次反馈帧
-                max_wait_time = 3.0
+                # 等待接收到至少一次反馈帧，期间周期性发送 MIT 保活
+                max_wait_time = 5.0
                 start_wait = time.time()
                 received_feedback = False
 
                 while time.time() - start_wait < max_wait_time:
-                    time.sleep(0.01)
+                    self.motor.control_mit(0.0, 0.0, 0.0, 0.0, 0.0)
+                    time.sleep(0.05)
                     state = self.motor.get_state()
                     if state.timestamp > 0:
                         received_feedback = True
-                        # 用反馈位置更新命令位置
                         with self.control_lock:
                             self.current_cmd_position = state.position
                             self.current_cmd_velocity = 0.0
                         break
 
                 if not received_feedback:
-                    messagebox.showerror("错误", "未能接收到电机反馈数据，请检查连接和电机ID配置")
+                    hint = self._build_connection_error_hint(motor_id, master_id)
+                    messagebox.showerror("错误", hint)
                     self.can_adapter.close()
                     self.can_adapter = None
                     self.motor = None
@@ -507,7 +576,7 @@ class MotorControlGUI:
                 self.clear_error_btn.config(state="normal")
 
                 # 禁用配置修改
-                config_vars = [self.port_var, self.baudrate_var, self.motor_id_var, self.master_id_var, self.motor_type_var]
+                config_vars = [self.port_var, self.baudrate_var, self.adapter_var, self.motor_id_var, self.master_id_var, self.motor_type_var]
                 for widget_var in config_vars:
                     for entry in self.root.winfo_children():
                         self._disable_entry_recursive(entry, widget_var)
@@ -577,7 +646,7 @@ class MotorControlGUI:
             self.torque_scale.set(0.0)
 
             # 恢复配置修改
-            config_vars = [self.port_var, self.baudrate_var, self.motor_id_var, self.master_id_var, self.motor_type_var]
+            config_vars = [self.port_var, self.baudrate_var, self.adapter_var, self.motor_id_var, self.master_id_var, self.motor_type_var]
             for widget_var in config_vars:
                 for entry in self.root.winfo_children():
                     self._enable_entry_recursive(entry, widget_var)

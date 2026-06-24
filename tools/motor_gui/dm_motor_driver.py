@@ -110,11 +110,10 @@ class WitMotionUSBCAN:
                 timeout=0.1
             )
             time.sleep(0.1)
-            
-            # # 进入配置模式并设置CAN波特率
-            # if not self._configure():
-            #     print("警告: CAN配置可能未成功，继续运行...")
-            
+
+            if not self._configure():
+                print("警告: CAN配置可能未成功，继续运行...")
+
             # 进入AT指令模式
             if not self._enter_at_mode():
                 print("警告: 进入AT指令模式可能未成功")
@@ -196,6 +195,36 @@ class WitMotionUSBCAN:
     def set_rx_callback(self, callback: Callable):
         """设置接收回调函数"""
         self._rx_callback = callback
+
+    def collect_raw_frames(self, duration: float = 2.0) -> list:
+        """在指定时间内收集原始 CAN 帧，用于连接诊断"""
+        collected = []
+        lock = threading.Lock()
+
+        def _sniffer(frame_id: int, data: bytes, frame_type: int):
+            with lock:
+                collected.append((frame_id, bytes(data)))
+
+        prev_callback = self._rx_callback
+        self._rx_callback = _sniffer
+        try:
+            time.sleep(duration)
+        finally:
+            self._rx_callback = prev_callback
+        return collected
+
+    def collect_raw_serial(self, duration: float = 1.0) -> bytes:
+        """收集原始串口字节，用于诊断"""
+        if not self.serial:
+            return b''
+        captured = bytearray()
+        end = time.time() + duration
+        while time.time() < end:
+            waiting = self.serial.in_waiting
+            if waiting:
+                captured.extend(self.serial.read(waiting))
+            time.sleep(0.01)
+        return bytes(captured)
     
     def _rx_loop(self):
         """接收数据循环"""
@@ -217,14 +246,12 @@ class WitMotionUSBCAN:
         # 查找完整的AT指令响应帧
         # 格式: AT(2) + ID和类型混合(4) + 长度(1) + 数据(0-8) + \r\n(2)
         while len(self._rx_buffer) >= 9:  # 最小帧长度: AT(2) + ID_TYPE(4) + 长度(1) + \r\n(2) = 9
-            # 查找 "AT" 开头
-            try:
-                at_idx = self._rx_buffer.index(b'AT'[0])
-                if at_idx > 0:
-                    self._rx_buffer = self._rx_buffer[at_idx:]
-            except ValueError:
+            at_idx = self._rx_buffer.find(b'AT')
+            if at_idx < 0:
                 self._rx_buffer.clear()
                 return
+            if at_idx > 0:
+                self._rx_buffer = self._rx_buffer[at_idx:]
 
             if len(self._rx_buffer) < 2:
                 return
@@ -334,6 +361,177 @@ class WitMotionUSBCAN:
             return False
 
 
+class DamiaoUSBCAN:
+    """
+    达妙官方 USB-CAN 适配器驱动
+
+    串口帧协议参考达妙 Motor_Control（帧头 0x55 0xAA，反馈 0xAA ... 0x55）
+    与达妙调试助手 / DM Motor_Control 库使用相同协议。
+    """
+
+    RX_FRAME_SIZE = 16
+    SEND_FRAME_FMT = '<2sBBIIBIBBBB8sB'
+
+    def __init__(self, port: str, baudrate: int = 921600):
+        self.port = port
+        self.baudrate = baudrate
+        self.serial: Optional[serial.Serial] = None
+        self._rx_buffer = bytearray()
+        self._rx_callback: Optional[Callable] = None
+        self._rx_thread: Optional[threading.Thread] = None
+        self._running = False
+        self._lock = threading.Lock()
+
+    def open(self) -> bool:
+        try:
+            self.serial = serial.Serial(
+                port=self.port,
+                baudrate=self.baudrate,
+                bytesize=serial.EIGHTBITS,
+                parity=serial.PARITY_NONE,
+                stopbits=serial.STOPBITS_ONE,
+                timeout=0.1,
+            )
+            time.sleep(0.1)
+            self._running = True
+            self._rx_thread = threading.Thread(target=self._rx_loop, daemon=True)
+            self._rx_thread.start()
+            print(f"达妙 USB-CAN 已连接: {self.port} @ {self.baudrate}")
+            return True
+        except Exception as e:
+            print(f"打开达妙 USB-CAN 失败: {e}")
+            return False
+
+    def close(self):
+        self._running = False
+        if self._rx_thread:
+            self._rx_thread.join(timeout=1.0)
+        if self.serial and self.serial.is_open:
+            self.serial.close()
+        print("达妙 USB-CAN 已断开")
+
+    def set_rx_callback(self, callback: Callable):
+        self._rx_callback = callback
+
+    def collect_raw_frames(self, duration: float = 2.0) -> list:
+        collected = []
+        lock = threading.Lock()
+
+        def _sniffer(frame_id: int, data: bytes, frame_type: int):
+            with lock:
+                collected.append((frame_id, bytes(data)))
+
+        prev_callback = self._rx_callback
+        self._rx_callback = _sniffer
+        try:
+            time.sleep(duration)
+        finally:
+            self._rx_callback = prev_callback
+        return collected
+
+    def collect_raw_serial(self, duration: float = 1.0) -> bytes:
+        """收集原始串口字节，用于诊断"""
+        if not self.serial:
+            return b''
+        captured = bytearray()
+        end = time.time() + duration
+        while time.time() < end:
+            waiting = self.serial.in_waiting
+            if waiting:
+                captured.extend(self.serial.read(waiting))
+            time.sleep(0.01)
+        return bytes(captured)
+
+    def _build_send_frame(self, frame_id: int, data: bytes) -> bytes:
+        payload = data[:8].ljust(8, b'\x00')
+        return struct.pack(
+            self.SEND_FRAME_FMT,
+            b'\x55\xAA',
+            0x1E,
+            0x03,
+            1,
+            10,
+            0,
+            frame_id & 0x7FF,
+            0,
+            8,
+            0,
+            0,
+            payload,
+            0,
+        )
+
+    def send_can_frame(self, frame_id: int, data: bytes,
+                       frame_type: int = WitMotionUSBCAN.FRAME_TYPE_STD_DATA) -> bool:
+        if not self.serial or not self.serial.is_open:
+            return False
+        if len(data) > 8:
+            print("错误: CAN数据长度不能超过8字节")
+            return False
+        frame = self._build_send_frame(frame_id, data)
+        try:
+            with self._lock:
+                self.serial.write(frame)
+            return True
+        except Exception as e:
+            print(f"达妙 USB-CAN 发送失败: {e}")
+            return False
+
+    def _parse_rx_frame(self, frame: bytes) -> Optional[Tuple[int, bytes]]:
+        if len(frame) != self.RX_FRAME_SIZE:
+            return None
+        if frame[0] != 0xAA or frame[-1] != 0x55:
+            return None
+        if frame[1] != 0x11:
+            return None
+        can_id = struct.unpack_from('<I', frame, 3)[0]
+        data = bytes(frame[7:15])
+        return can_id, data
+
+    def _process_rx_buffer(self):
+        while len(self._rx_buffer) >= self.RX_FRAME_SIZE:
+            start = self._rx_buffer.find(0xAA)
+            if start < 0:
+                self._rx_buffer.clear()
+                return
+            if start > 0:
+                self._rx_buffer = self._rx_buffer[start:]
+            if len(self._rx_buffer) < self.RX_FRAME_SIZE:
+                return
+            candidate = bytes(self._rx_buffer[:self.RX_FRAME_SIZE])
+            parsed = self._parse_rx_frame(candidate)
+            if parsed is None:
+                self._rx_buffer = self._rx_buffer[1:]
+                continue
+            self._rx_buffer = self._rx_buffer[self.RX_FRAME_SIZE:]
+            frame_id, data = parsed
+            if self._rx_callback:
+                self._rx_callback(frame_id, data, WitMotionUSBCAN.FRAME_TYPE_STD_DATA)
+
+    def _rx_loop(self):
+        while self._running and self.serial and self.serial.is_open:
+            try:
+                if self.serial.in_waiting:
+                    data = self.serial.read(self.serial.in_waiting)
+                    self._rx_buffer.extend(data)
+                    self._process_rx_buffer()
+                else:
+                    time.sleep(0.001)
+            except Exception as e:
+                if self._running:
+                    print(f"达妙 USB-CAN 接收错误: {e}")
+                break
+
+
+def create_can_adapter(adapter_type: str, port: str, baudrate: int = 921600,
+                       can_baudrate: int = 1000000):
+    """根据适配器类型创建 USB-CAN 实例"""
+    adapter_key = (adapter_type or '').strip().lower()
+    if adapter_key in ('达妙 usb-can', 'damiao', 'dm', '达妙'):
+        return DamiaoUSBCAN(port=port, baudrate=baudrate)
+    return WitMotionUSBCAN(port=port, baudrate=baudrate, can_baudrate=can_baudrate)
+
+
 class DMMotor:
     """
     达妙电机驱动类（支持多种型号）
@@ -423,15 +621,19 @@ class DMMotor:
         temp = data_norm * span + min
         return float(temp)
 
+    def _feedback_frame_matches(self, frame_id: int, data: bytes) -> bool:
+        """判断 CAN 帧是否为当前电机的反馈帧（与 dmmotor_hardware_interface 对齐）"""
+        if len(data) < 8:
+            return False
+        if (data[0] & 0x0F) != (self.motor_id & 0x0F):
+            return False
+        if self.master_id <= 0:
+            return True
+        return frame_id in (self.master_id, self.motor_id + 0x10)
+
     def _on_can_frame(self, frame_id: int, data: bytes, frame_type: int):
         """CAN帧接收回调"""
-        # 检查是否是本电机的反馈帧
-        if frame_id != self.master_id:
-            # print(f"收到非本电机反馈帧，ID: {frame_id:X}, 期望ID: {self.master_id:X}")
-            return
-
-        if len(data) < 8:
-            # print(f"收到无效反馈帧，ID: {frame_id:X}, 数据长度: {len(data)}")
+        if not self._feedback_frame_matches(frame_id, data):
             return
 
         # 解析反馈数据
@@ -443,10 +645,6 @@ class DMMotor:
         # D[5]: T[7:0]
         # D[6]: T_MOS
         # D[7]: T_Rotor
-
-        motor_id = data[0] & 0x0F  # 低4位是ID
-        if motor_id != (self.motor_id & 0x0F):
-            return
 
         error_code = (data[0] >> 4) & 0x0F  # 高4位是ERR
 
