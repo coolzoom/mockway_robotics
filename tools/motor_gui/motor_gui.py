@@ -13,6 +13,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
 import time
+import math
 import serial.tools.list_ports
 from dm_motor_driver import create_can_adapter, DMMotor, MotorType
 
@@ -298,18 +299,37 @@ class MotorControlGUI:
         # 分隔线
         ttk.Separator(position_frame, orient="horizontal").grid(row=2, column=0, columnspan=2, sticky="ew", pady=10)
 
+        # 正转/反转步进角度
+        rotate_step_frame = ttk.Frame(position_frame)
+        rotate_step_frame.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        ttk.Label(rotate_step_frame, text="旋转角度 (°):", font=("Arial", 9)).pack(side="left")
+        self.rotate_step_deg_var = tk.DoubleVar(value=5.0)
+        self.rotate_step_label = ttk.Label(rotate_step_frame, text="5° (0.087 rad)", font=("Arial", 9))
+        self.rotate_step_label.pack(side="right")
+        self.rotate_step_scale = tk.Scale(
+            rotate_step_frame,
+            from_=1.0,
+            to=10.0,
+            resolution=1.0,
+            orient=tk.HORIZONTAL,
+            length=320,
+            variable=self.rotate_step_deg_var,
+            command=self._update_rotate_step_display,
+        )
+        self.rotate_step_scale.pack(side="left", fill="x", expand=True, padx=(8, 12))
+
         # 目标位置显示
-        ttk.Label(position_frame, text="目标位置:").grid(row=3, column=0, sticky="w")
+        ttk.Label(position_frame, text="目标位置:").grid(row=4, column=0, sticky="w")
         self.target_position_label = ttk.Label(position_frame, text="-- rad", font=("Arial", 10, "bold"))
-        self.target_position_label.grid(row=3, column=1, sticky="w", padx=10)
+        self.target_position_label.grid(row=4, column=1, sticky="w", padx=10)
 
         # 控制按钮
         button_frame = ttk.Frame(position_frame)
-        button_frame.grid(row=4, column=0, columnspan=2, pady=10)
+        button_frame.grid(row=5, column=0, columnspan=2, pady=10)
 
         self.move_neg_btn = tk.Button(
             button_frame,
-            text="反转 (-12 rad)",
+            text="反转 (-5°)",
             state="disabled",
             width=18,
             height=2,
@@ -318,12 +338,12 @@ class MotorControlGUI:
             font=("Arial", 10, "bold")
         )
         self.move_neg_btn.pack(side="left", padx=5)
-        self.move_neg_btn.bind("<ButtonPress-1>", lambda e: self.on_button_press(-12.0))
+        self.move_neg_btn.bind("<ButtonPress-1>", lambda e: self.on_button_press(-1))
         self.move_neg_btn.bind("<ButtonRelease-1>", lambda e: self.on_button_release())
 
         self.move_pos_btn = tk.Button(
             button_frame,
-            text="正转 (+12 rad)",
+            text="正转 (+5°)",
             state="disabled",
             width=18,
             height=2,
@@ -332,12 +352,12 @@ class MotorControlGUI:
             font=("Arial", 10, "bold")
         )
         self.move_pos_btn.pack(side="left", padx=5)
-        self.move_pos_btn.bind("<ButtonPress-1>", lambda e: self.on_button_press(12.0))
+        self.move_pos_btn.bind("<ButtonPress-1>", lambda e: self.on_button_press(1))
         self.move_pos_btn.bind("<ButtonRelease-1>", lambda e: self.on_button_release())
 
         # 运动状态显示
         self.motion_status_label = ttk.Label(position_frame, text="运动状态: 静止", foreground="gray")
-        self.motion_status_label.grid(row=5, column=0, columnspan=2, pady=(5, 0))
+        self.motion_status_label.grid(row=6, column=0, columnspan=2, pady=(5, 0))
 
         # ===== 力矩控制区 =====
         torque_frame = ttk.LabelFrame(self.root, text="力矩控制 (MIT模式 - 纯力矩输出)", padding=10)
@@ -477,6 +497,18 @@ class MotorControlGUI:
         ttk.Label(status_frame, text="使能反馈:").grid(row=3, column=3, sticky="w", padx=(20, 0), pady=(5, 0))
         self.enabled_feedback_label = ttk.Label(status_frame, text="--", foreground="gray", font=("Arial", 9))
         self.enabled_feedback_label.grid(row=3, column=4, columnspan=2, sticky="w", padx=10, pady=(5, 0))
+
+    def _get_rotate_step_rad(self) -> float:
+        """获取正转/反转步进角度（弧度）"""
+        return math.radians(self.rotate_step_deg_var.get())
+
+    def _update_rotate_step_display(self, _value=None):
+        """更新旋转角度显示与按钮文字"""
+        deg = self.rotate_step_deg_var.get()
+        rad = math.radians(deg)
+        self.rotate_step_label.config(text=f"{deg:.0f}° ({rad:.3f} rad)")
+        self.move_neg_btn.config(text=f"反转 (-{deg:.0f}°)")
+        self.move_pos_btn.config(text=f"正转 (+{deg:.0f}°)")
 
     def _step_var(self, var, step, min_val):
         """步进调整变量值"""
@@ -838,18 +870,21 @@ class MotorControlGUI:
         angle_deg = self.saved_position * 180 / 3.14159
         self.target_position_label.config(text=f"{self.saved_position:.2f} rad ({angle_deg:.1f}°)")
 
-    def on_button_press(self, target_position):
-        """按钮按下事件 - 开始向目标位置移动"""
+    def on_button_press(self, direction: int):
+        """按钮按下事件 - 从当前位置向指定方向旋转设定角度"""
         if not self.enabled or not self.motor:
             return
 
-        # 设置目标位置，启动运动
+        step_rad = self._get_rotate_step_rad()
         with self.control_lock:
+            target_position = self.current_cmd_position + direction * step_rad
             self.target_position = target_position
             self.motion_active = True
 
-        angle_deg = target_position * 180 / 3.14159
-        self.target_position_label.config(text=f"{target_position:.2f} rad ({angle_deg:.1f}°)")
+        angle_deg = target_position * 180 / math.pi
+        self.target_position_label.config(
+            text=f"{target_position:.2f} rad ({angle_deg:.1f}°)"
+        )
 
     def on_button_release(self):
         """按钮松开事件 - 开始减速停止"""
