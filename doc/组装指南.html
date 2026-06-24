@@ -340,9 +340,11 @@
   </div>
 
   <h4>1. 安装依赖</h4>
+  <p><strong>Windows：</strong>请直接跳到下方「Windows 推荐：用 Miniconda 安装 Pinocchio」，不要对完整 <code>requirements.txt</code> 执行 pip。</p>
+  <p><strong>Linux：</strong>可尝试：</p>
   <pre>cd tools/dynamics_test
-pip install -r requirements.txt</pre>
-  <p>依赖包括 <strong>pinocchio</strong>（刚体动力学）、numpy、matplotlib。也可使用 conda：</p>
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple</pre>
+  <p>依赖包括 <strong>pinocchio</strong>（刚体动力学）、numpy、matplotlib。Linux 下也可使用 conda：</p>
   <pre>conda create -n mockway_dynamics python=3.10 -y
 conda activate mockway_dynamics
 conda install pinocchio -c conda-forge -y
@@ -387,6 +389,25 @@ trusted-host = pypi.tuna.tsinghua.edu.cn</pre>
   <p><code>motor_gui</code> 依赖安装示例：</p>
   <pre>cd tools/motor_gui
 pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple</pre>
+
+  <div class="alert alert-warn">
+    <strong>Windows 用户注意：</strong><code>dynamics_test</code> 依赖的 <code>pin</code>（Pinocchio）在 Windows 上<strong>常常没有可用的 pip 预编译包</strong>，<code>pip install -r requirements.txt</code> 会卡在 <code>Installing build dependencies ...</code>（实为后台下载/编译 C++ 依赖，无进度条，可能数十分钟仍失败）。<strong>请勿在 Windows 上用 pip 安装 Pinocchio</strong>，请改用下方 conda 方案。
+  </div>
+
+  <h4>Windows 推荐：用 Miniconda 安装 Pinocchio</h4>
+  <p>可双击或在 CMD 中运行项目自带脚本（<strong>若未安装 Miniconda 会自动下载并安装</strong>，随后创建 conda 环境并安装依赖）：</p>
+  <pre>tools\dynamics_test\setup_win.bat</pre>
+  <p>也可手动执行以下步骤。1. 安装 <a href="https://docs.conda.io/en/latest/miniconda.html">Miniconda</a>（或 Anaconda）后，打开 <strong>Anaconda Prompt</strong>，执行：</p>
+  <pre>conda create -n mockway_dynamics python=3.10 -y
+conda activate mockway_dynamics
+conda install pinocchio -c conda-forge -y
+
+cd 你的路径\mockway_robotics\tools\dynamics_test
+pip install numpy matplotlib pyserial pyyaml -i https://pypi.tuna.tsinghua.edu.cn/simple</pre>
+  <p>2. 验证 Pinocchio 是否可用：</p>
+  <pre>python -c "import pinocchio; print('pinocchio OK', pinocchio.__version__)"</pre>
+  <p>3. 之后运行力矩补偿前，每次先 <code>conda activate mockway_dynamics</code>。</p>
+  <p><strong>说明：</strong><code>motor_gui</code> 只需 <code>pyserial</code>，继续用普通 pip 即可；<strong>仅力矩补偿</strong>需要 Pinocchio，因此 Windows 上分开环境安装最省事。</p>
 
   <h4>2. 配置文件</h4>
   <p>编辑 <code>tools/dynamics_test/dynamics_test.yaml</code>，确保与电机实际 ID、接线一致：</p>
