@@ -395,8 +395,12 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple</pre
   </div>
 
   <h4>Windows 推荐：用 Miniconda 安装 Pinocchio</h4>
-  <p>可双击或在 CMD 中运行项目自带脚本（<strong>若未安装 Miniconda 会自动下载并安装</strong>，随后创建 conda 环境并安装依赖）：</p>
+  <p>可双击运行项目自带管理脚本（含菜单：<strong>1 安装</strong> / <strong>2 启动环境</strong> / <strong>3 停止环境</strong>；未安装 Miniconda 时会自动下载安装）：</p>
   <pre>tools\dynamics_test\setup_win.bat</pre>
+  <p>安装完成后选 <strong>[2]</strong> 启动 <code>mockway_dynamics</code> 环境（会打开独立工作窗口）；选 <strong>[3]</strong> 停止环境。也可命令行：</p>
+  <pre>setup_win.bat setup    REM 仅安装
+setup_win.bat start    REM 启动环境
+setup_win.bat stop     REM 停止环境</pre>
   <p>也可手动执行以下步骤。1. 安装 <a href="https://docs.conda.io/en/latest/miniconda.html">Miniconda</a>（或 Anaconda）后，打开 <strong>Anaconda Prompt</strong>，执行：</p>
   <pre>conda create -n mockway_dynamics python=3.10 -y
 conda activate mockway_dynamics
