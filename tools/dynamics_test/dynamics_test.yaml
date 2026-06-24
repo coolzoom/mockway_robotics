@@ -3,7 +3,8 @@
 
 # CAN 通信配置
 can:
-  port: "COM8"                # CAN适配器串口号 (Windows: COMx, Linux: /dev/ttyUSBx)
+  port: "COM5"                # CAN适配器串口号 (Windows: COMx, Linux: /dev/ttyUSBx)
+  adapter_type: "damiao"      # USB-CAN 控制器: damiao(达妙) / witmotion(维特)
   serial_baudrate: 921600     # 串口波特率（USB-CAN适配器通信）
   can_baudrate: 1000000       # CAN总线波特率
 

@@ -24,10 +24,13 @@ import argparse
 
 # Add motor driver to path
 sys.path.append(str(Path(__file__).parent.parent / "motor_gui"))
-from dm_motor_driver import WitMotionUSBCAN, DMMotor, MotorType, MotorState
+from dm_motor_driver import create_can_adapter, DMMotor, MotorType, MotorState
 
 # Import configuration loader
-from config_loader import load_config, DynamicsTestConfig, get_default_config, print_config_summary
+from config_loader import (
+    load_config, DynamicsTestConfig, get_default_config, print_config_summary,
+    can_adapter_display_name,
+)
 
 # Default configuration file path
 DEFAULT_CONFIG_PATH = Path(__file__).parent / "dynamics_test.yaml"
@@ -128,11 +131,13 @@ class RealtimeTorqueController:
         self.dynamics = MockwayDynamics(str(urdf_path))
 
         # Initialize CAN adapter
-        print(f"\n初始化CAN适配器: {config.can_port}, 波特率: {config.can_baudrate}")
-        self.can_adapter = WitMotionUSBCAN(
+        adapter_name = can_adapter_display_name(config.can_adapter_type)
+        print(f"\n初始化CAN适配器: {adapter_name} @ {config.can_port}, 波特率: {config.can_baudrate}")
+        self.can_adapter = create_can_adapter(
+            config.can_adapter_type,
             port=config.can_port,
-            baudrate=config.can_serial_baudrate,  # Serial baudrate for USB-CAN adapter
-            can_baudrate=config.can_baudrate
+            baudrate=config.can_serial_baudrate,
+            can_baudrate=config.can_baudrate,
         )
 
         # Motor instances (will be initialized in setup)
@@ -537,6 +542,14 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        '--can-adapter',
+        type=str,
+        default=None,
+        choices=['damiao', 'witmotion'],
+        help='USB-CAN控制器类型 (覆盖配置文件): damiao=达妙, witmotion=维特'
+    )
+
+    parser.add_argument(
         '--mode', '-m',
         type=str,
         choices=['gravity', 'full_dynamics', 'none'],
@@ -796,6 +809,10 @@ def main():
         if args.can_port:
             config.can_port = args.can_port
             print(f"CAN端口被命令行参数覆盖: {args.can_port}")
+
+        if args.can_adapter:
+            config.can_adapter_type = args.can_adapter
+            print(f"USB-CAN适配器被命令行参数覆盖: {can_adapter_display_name(args.can_adapter)}")
 
         if args.mode:
             config.compensation_mode = args.mode

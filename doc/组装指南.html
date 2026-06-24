@@ -417,6 +417,7 @@ pip install numpy matplotlib pyserial pyyaml -i https://pypi.tuna.tsinghua.edu.c
   <p>编辑 <code>tools/dynamics_test/dynamics_test.yaml</code>，确保与电机实际 ID、接线一致：</p>
   <pre>can:
   port: "COM8"              # 改为你的 USB-CAN COM 口（与 motor_gui 相同）
+  adapter_type: "damiao"    # USB-CAN 控制器：damiao=达妙，witmotion=维特（须与 motor_gui 一致）
   serial_baudrate: 921600
   can_baudrate: 1000000
 
@@ -463,7 +464,8 @@ python realtime_torque_compensation.py</pre>
   </ol>
   <p>也可直接以演示模式启动（跳过菜单）：</p>
   <pre>python realtime_torque_compensation.py --demo gravity
-python realtime_torque_compensation.py --can-port COM8   # 覆盖 yaml 中的端口</pre>
+python realtime_torque_compensation.py --can-port COM8   # 覆盖 yaml 中的端口
+python realtime_torque_compensation.py --can-adapter damiao  # 覆盖适配器类型</pre>
 
   <div class="img-single">
     <img src="img/torque_compensation.png" alt="力矩补偿运行界面">
@@ -487,7 +489,8 @@ python realtime_torque_compensation.py --can-port COM8   # 覆盖 yaml 中的端
     <li><strong>正常：</strong>重力补偿开启后，各关节可轻松用手推动，松手后无明显剧烈摆动</li>
     <li><strong>某关节反力过大/过小：</strong>检查该关节 <code>direction</code> 是否与 xacro 一致；复查零点标定</li>
     <li><strong>抖动或飞车：</strong>增大 <code>mit_params.kd</code>（如 1.0→2.0）；确认 URDF 质量/惯量与实物接近</li>
-    <li><strong>无法连接电机：</strong>核对 <code>dynamics_test.yaml</code> 中 <code>can.port</code>、电机 ID；关闭占用 COM 口的其他程序（含达妙助手、motor_gui）</li>
+    <li><strong>无法连接电机 / 出现「进入AT指令模式」警告：</strong>说明当前使用了<strong>维特</strong>协议，而硬件是<strong>达妙 USB-CAN</strong>。在 <code>dynamics_test.yaml</code> 中设置 <code>can.adapter_type: "damiao"</code>，与 <code>motor_gui</code> 下拉框一致</li>
+    <li><strong>无法连接电机：</strong>核对 <code>dynamics_test.yaml</code> 中 <code>can.port</code>、<code>can.adapter_type</code>、电机 ID；关闭占用 COM 口的其他程序（含达妙助手、motor_gui）</li>
   </ul>
 
   <div class="alert alert-info">

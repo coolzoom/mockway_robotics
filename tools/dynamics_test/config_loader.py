@@ -28,6 +28,37 @@ MOTOR_TYPE_MAP = {
     "DM4340": MotorType.DM4340,
 }
 
+# USB-CAN 适配器类型（与 motor_gui/dm_motor_driver.create_can_adapter 一致）
+CAN_ADAPTER_TYPES = {
+    'damiao': '达妙 USB-CAN',
+    '达妙': '达妙 USB-CAN',
+    '达妙 usb-can': '达妙 USB-CAN',
+    'dm': '达妙 USB-CAN',
+    'witmotion': '维特 USB-CAN',
+    'wit': '维特 USB-CAN',
+    '维特': '维特 USB-CAN',
+    '维特 usb-can': '维特 USB-CAN',
+}
+
+
+def normalize_can_adapter_type(adapter_type: str) -> str:
+    """将配置中的适配器类型规范化为 damiao 或 witmotion"""
+    key = (adapter_type or 'damiao').strip().lower()
+    if key in ('达妙 usb-can', 'damiao', 'dm', '达妙'):
+        return 'damiao'
+    if key in ('witmotion', 'wit', '维特', '维特 usb-can'):
+        return 'witmotion'
+    raise ValueError(
+        f"未知的 CAN 适配器类型: {adapter_type!r}，"
+        f"可选: damiao（达妙 USB-CAN）, witmotion（维特 USB-CAN）"
+    )
+
+
+def can_adapter_display_name(adapter_type: str) -> str:
+    """返回适配器类型的显示名称"""
+    key = (adapter_type or '').strip().lower()
+    return CAN_ADAPTER_TYPES.get(key, adapter_type)
+
 
 @dataclass
 class MotorConfig:
@@ -43,6 +74,7 @@ class MotorConfig:
 class DynamicsTestConfig:
     """完整的动力学测试配置"""
     can_port: str
+    can_adapter_type: str  # "damiao" 或 "witmotion"
     can_serial_baudrate: int
     can_baudrate: int
     motors: List[MotorConfig]
@@ -110,6 +142,7 @@ def get_default_config() -> DynamicsTestConfig:
 
     return DynamicsTestConfig(
         can_port="COM9",
+        can_adapter_type="damiao",
         can_serial_baudrate=921600,
         can_baudrate=1000000,
         motors=default_motors,
@@ -162,9 +195,22 @@ def validate_config(config: DynamicsTestConfig) -> List[str]:
     if config.kd < 0:
         errors.append(f"kd必须非负 (当前: {config.kd})")
 
-    # 验证日志间隔
-    if config.log_interval <= 0:
-        errors.append(f"日志间隔必须大于0 (当前: {config.log_interval})")
+    # 验证CAN端口
+    if not config.can_port:
+        errors.append("CAN端口不能为空")
+
+    # 验证 USB-CAN 适配器类型
+    try:
+        normalize_can_adapter_type(config.can_adapter_type)
+    except ValueError as e:
+        errors.append(str(e))
+
+    # 验证波特率
+    if config.can_serial_baudrate <= 0:
+        errors.append(f"CAN串口波特率必须大于0 (当前: {config.can_serial_baudrate})")
+
+    if config.can_baudrate <= 0:
+        errors.append(f"CAN总线波特率必须大于0 (当前: {config.can_baudrate})")
 
     return errors
 
@@ -216,6 +262,9 @@ def load_config(config_path: Optional[str] = None) -> DynamicsTestConfig:
         # CAN配置
         can_config = yaml_data.get('can', {})
         can_port = can_config.get('port', 'COM9')
+        can_adapter_type = normalize_can_adapter_type(
+            can_config.get('adapter_type', 'damiao')
+        )
         can_serial_baudrate = can_config.get('serial_baudrate', 921600)
         can_baudrate = can_config.get('can_baudrate', 1000000)
 
@@ -250,6 +299,7 @@ def load_config(config_path: Optional[str] = None) -> DynamicsTestConfig:
         # 创建配置对象
         config = DynamicsTestConfig(
             can_port=can_port,
+            can_adapter_type=can_adapter_type,
             can_serial_baudrate=can_serial_baudrate,
             can_baudrate=can_baudrate,
             motors=motors,
@@ -297,6 +347,7 @@ def print_config_summary(config: DynamicsTestConfig):
     print("配置摘要")
     print("="*60)
     print(f"CAN端口: {config.can_port}")
+    print(f"USB-CAN适配器: {can_adapter_display_name(config.can_adapter_type)}")
     print(f"CAN串口波特率: {config.can_serial_baudrate}")
     print(f"CAN总线波特率: {config.can_baudrate}")
     print(f"\n电机数量: {len(config.motors)}")
