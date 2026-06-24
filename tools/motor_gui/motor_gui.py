@@ -213,11 +213,11 @@ class MotorControlGUI:
         ttk.Entry(param_frame, textvariable=self.motor_id_var, width=10).grid(row=0, column=1, padx=5, sticky="w")
 
         ttk.Label(param_frame, text="Master ID:").grid(row=0, column=2, sticky="w", padx=(20, 0))
-        self.master_id_var = tk.StringVar(value="17")
+        self.master_id_var = tk.StringVar(value="0")
         ttk.Entry(param_frame, textvariable=self.master_id_var, width=10).grid(row=0, column=3, padx=5, sticky="w")
         ttk.Label(
             param_frame,
-            text="(达妙默认=电机ID+16，如 ID=1 → Master=17；填 0 则自动匹配)",
+            text="(达妙默认=电机ID+16；填 0 时按数据内 ID 自动匹配，与 ROS 配置一致)",
             foreground="gray",
             font=("Arial", 8)
         ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(4, 0))
