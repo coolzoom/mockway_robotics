@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>牧卫机器人 — 组装与电机 ID 配置指南</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --text: #1a2332;
+      --muted: #5c6b7a;
+      --accent: #2056b8;
+      --accent-light: #e8f0fe;
+      --border: #dde4ee;
+      --warn-bg: #fff8e6;
+      --warn-border: #f0c040;
+      --ok-bg: #ecfdf3;
+      --ok-border: #34a853;
+      --code-bg: #f0f4f8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+    }
+    header {
+      background: linear-gradient(135deg, #163a7a 0%, #2056b8 60%, #3a7bd5 100%);
+      color: #fff;
+      padding: 2.5rem 1.5rem 2rem;
+      text-align: center;
+    }
+    header h1 { margin: 0 0 0.5rem; font-size: 1.85rem; font-weight: 700; }
+    header p { margin: 0; opacity: 0.92; max-width: 720px; margin-inline: auto; }
+    nav.toc {
+      max-width: 960px;
+      margin: -1.25rem auto 0;
+      padding: 0 1rem;
+      position: relative;
+      z-index: 2;
+    }
+    nav.toc > div {
+      background: var(--card);
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      padding: 1.25rem 1.5rem;
+    }
+    nav.toc h2 { margin: 0 0 0.75rem; font-size: 1rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    nav.toc ol { margin: 0; padding-left: 1.25rem; columns: 2; column-gap: 2rem; }
+    nav.toc a { color: var(--accent); text-decoration: none; }
+    nav.toc a:hover { text-decoration: underline; }
+    main { max-width: 960px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+    section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.75rem 1.75rem 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    section h2 {
+      margin: 0 0 1rem;
+      font-size: 1.45rem;
+      color: var(--accent);
+      border-bottom: 2px solid var(--accent-light);
+      padding-bottom: 0.5rem;
+    }
+    section h3 { margin: 1.5rem 0 0.75rem; font-size: 1.1rem; }
+    section h4 { margin: 1rem 0 0.5rem; font-size: 1rem; color: var(--muted); }
+    p { margin: 0.5rem 0; }
+    ul, ol { margin: 0.5rem 0; padding-left: 1.4rem; }
+    li { margin: 0.35rem 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.95rem;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 0.55rem 0.75rem;
+      text-align: left;
+    }
+    th { background: var(--accent-light); font-weight: 600; }
+    tr:nth-child(even) td { background: #fafbfd; }
+    code, pre {
+      font-family: "Cascadia Code", "Consolas", monospace;
+      font-size: 0.88rem;
+    }
+    code {
+      background: var(--code-bg);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+    }
+    pre {
+      background: #1e2936;
+      color: #e2e8f0;
+      padding: 1rem 1.15rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 0.75rem 0;
+    }
+    .alert {
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      margin: 1rem 0;
+      border-left: 4px solid;
+    }
+    .alert-warn { background: var(--warn-bg); border-color: var(--warn-border); }
+    .alert-info { background: var(--accent-light); border-color: var(--accent); }
+    .alert-ok { background: var(--ok-bg); border-color: var(--ok-border); }
+    .step-badge {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.85rem;
+      padding: 0.15rem 0.55rem;
+      border-radius: 6px;
+      margin-right: 0.35rem;
+      vertical-align: middle;
+    }
+    .img-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+    .img-grid figure {
+      margin: 0;
+      text-align: center;
+    }
+    .img-grid img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .img-grid figcaption {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-top: 0.35rem;
+    }
+    .img-single {
+      text-align: center;
+      margin: 1rem 0;
+    }
+    .img-single img {
+      max-width: 280px;
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .flow {
+      background: var(--code-bg);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      font-family: monospace;
+      white-space: pre-wrap;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+      padding: 2rem 1rem;
+    }
+    @media (max-width: 640px) {
+      nav.toc ol { columns: 1; }
+      section { padding: 1.25rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>牧卫机器人 — 组装与电机 ID 配置指南</h1>
+  <p>六轴协作机械臂完整组装流程，含 6 路达妙电机 CAN ID 设置、验证与软件配置对照说明</p>
+</header>
+
+<nav class="toc">
+  <div>
+    <h2>目录</h2>
+    <ol>
+      <li><a href="#overview">系统概览</a></li>
+      <li><a href="#motor-id">电机 ID 配置（核心）</a></li>
+      <li><a href="#verify-id">ID 验证与调试</a></li>
+      <li><a href="#software-map">软件中的 ID 映射</a></li>
+      <li><a href="#electrical">电气连接</a></li>
+      <li><a href="#step0">组装前准备</a></li>
+      <li><a href="#step1">步骤 1：热熔螺母</a></li>
+      <li><a href="#step2">步骤 2：电机入壳</a></li>
+      <li><a href="#step3">步骤 3：法兰安装</a></li>
+      <li><a href="#step4">步骤 4：关节 1 与基座</a></li>
+      <li><a href="#step5">步骤 5：上臂组装</a></li>
+      <li><a href="#step6">步骤 6：上臂安装</a></li>
+      <li><a href="#step7">步骤 7：前臂组装</a></li>
+      <li><a href="#step8">步骤 8：前臂安装</a></li>
+      <li><a href="#step9">步骤 9：关节 5/6</a></li>
+      <li><a href="#step10">步骤 10：零点标定</a></li>
+      <li><a href="#troubleshoot">故障排查</a></li>
+    </ol>
+  </div>
+</nav>
+
+<main>
+
+<section id="overview">
+  <h2>系统概览</h2>
+  <p>牧卫（Mockway）机械臂为开源六轴协作机械臂，共使用 <strong>6 台达妙 CAN 总线电机</strong>，通过 <strong>1 Mbps CAN 总线</strong> 与上位机通信。</p>
+  <table>
+    <thead>
+      <tr><th>关节</th><th>名称</th><th>电机型号</th><th>CAN ID</th><th>Master ID（本项目）</th><th>旋转方向 dir</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>J1 / joint1</td><td>基座旋转</td><td>DM-J4310-2EC</td><td><code>0x01</code> (1)</td><td><code>0</code></td><td>+1</td></tr>
+      <tr><td>J2 / joint2</td><td>肩部</td><td>DM4340</td><td><code>0x02</code> (2)</td><td><code>0</code></td><td>+1</td></tr>
+      <tr><td>J3 / joint3</td><td>肘部</td><td>DM4340</td><td><code>0x03</code> (3)</td><td><code>0</code></td><td>-1</td></tr>
+      <tr><td>J4 / joint4</td><td>腕部俯仰</td><td>DM-J4310-2EC</td><td><code>0x04</code> (4)</td><td><code>0</code></td><td>+1</td></tr>
+      <tr><td>J5 / joint5</td><td>腕部滚转</td><td>DM-J4310-2EC</td><td><code>0x05</code> (5)</td><td><code>0</code></td><td>+1</td></tr>
+      <tr><td>J6 / joint6</td><td>腕部偏航 / 末端</td><td>DM-J4310-2EC</td><td><code>0x06</code> (6)</td><td><code>0</code></td><td>+1</td></tr>
+    </tbody>
+  </table>
+  <div class="alert alert-info">
+    <strong>代码分析结论：</strong>本仓库 <em>不包含</em> 通过 CAN 修改电机 ID 的程序接口。电机 ID 必须在组装前，使用达妙官方<strong>调试助手</strong>逐台写入并保存到驱动器 Flash。仓库中的 <code>motor_gui</code> 与 <code>dmmotor_hardware_interface</code> 仅<strong>使用</strong>已配置好的 ID 进行通信与控制。
+  </div>
+</section>
+
+<section id="motor-id">
+  <h2>电机 ID 配置（核心）</h2>
+
+  <h3>为什么不能并联后一起改 ID？</h3>
+  <p>CAN 总线上每台电机的 <code>CAN_ID</code> 必须唯一。若多台电机使用相同 ID 同时上电，总线会产生冲突，无法正确通信。因此必须<strong>每次只连接一台电机</strong>进行 ID 设置，完成后再接入下一台。</p>
+
+  <h3>所需工具与连接</h3>
+  <ul>
+    <li><strong>达妙科技调试助手</strong>（官方上位机，通过电机调试串口连接）</li>
+    <li><strong>GH1.25-3pin 调试线</strong>：连接电机调试串口与电脑 USB</li>
+    <li><strong>USB 转 CAN 模块</strong>（维特 USB-CAN 或达妙官方模块）：连接电机 CAN 口</li>
+    <li><strong>24V 电源</strong>：为电机供电（CAN 通信需要电机上电）</li>
+    <li><strong>XT30(2+2) 线</strong>：电源 + CAN 四线一体插头</li>
+  </ul>
+
+  <div class="flow">电脑 USB ── GH1.25 串口线 ──► 电机调试串口（参数读写）
+电脑 USB ── USB-CAN ── CAN_H/CAN_L ──► 电机 CAN 口（运行验证）
+24V 电源 ── XT30(2+2) ──► 电机电源接口</div>
+
+  <h3>达妙调试助手操作步骤（每台电机重复一次）</h3>
+  <ol>
+    <li>仅连接<strong>当前要配置的一台</strong>电机（不要接入其他电机到同一 CAN 总线）。</li>
+    <li>打开达妙科技调试助手，选择正确的 COM 串口，点击 <strong>Open Port</strong> 连接。</li>
+    <li>给电机上电，确认串口打印电机信息。</li>
+    <li>在 <strong>Set Parameters</strong> 区域点击 <strong>Read Param</strong>，读取当前参数。</li>
+    <li>设置以下关键参数：
+      <ul>
+        <li><strong>CAN_ID</strong>：按上表设置为 1～6（十六进制 <code>0x01</code>～<code>0x06</code>）</li>
+        <li><strong>Master ID</strong>：本项目统一使用 <code>0</code>（与 <code>motor_gui</code>、<code>dynamics_test.yaml</code> 默认一致）</li>
+        <li><strong>Control Mode</strong>：建议设为 <strong>MIT Mode</strong></li>
+        <li>CAN 波特率：固定 <strong>1 Mbps</strong>（与代码中 <code>can_baudrate=1000000</code> 一致）</li>
+      </ul>
+    </li>
+    <li>点击 <strong>Write Param</strong> 写入并保存到驱动器（断电后仍保留）。</li>
+    <li>再次 <strong>Read Param</strong> 确认 CAN_ID 与 Master ID 已正确保存。</li>
+    <li>断电，贴标签标明关节号与 ID，再进行下一台。</li>
+  </ol>
+
+  <div class="alert alert-warn">
+    <strong>Master ID 说明：</strong>达妙官方文档建议 <code>Master ID = CAN_ID + 0x10</code>（例如 CAN_ID=1 时 Master=0x11），且不可设为 0x00。本 Mockway 项目在所有配置文件中统一使用 <code>master_id: 0</code>。若您按官方建议设置了 Master ID，则在使用 <code>motor_gui</code> 验证时，须将界面中的 Master ID 改为与电机一致（例如 CAN_ID=1 时填 17 即 0x11），否则无法收到反馈帧。
+  </div>
+
+  <h3>推荐配置顺序</h3>
+  <p>建议按关节编号顺序配置，并在电机外壳上贴标签，避免组装后混淆：</p>
+  <table>
+    <thead>
+      <tr><th>顺序</th><th>贴标签</th><th>电机型号</th><th>CAN_ID</th><th>Master ID（本项目）</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td>J1</td><td>DM-J4310-2EC ×1</td><td>1</td><td>0</td></tr>
+      <tr><td>2</td><td>J2</td><td>DM4340 ×1</td><td>2</td><td>0</td></tr>
+      <tr><td>3</td><td>J3</td><td>DM4340 ×1</td><td>3</td><td>0</td></tr>
+      <tr><td>4</td><td>J4</td><td>DM-J4310-2EC ×1</td><td>4</td><td>0</td></tr>
+      <tr><td>5</td><td>J5</td><td>DM-J4310-2EC ×1</td><td>5</td><td>0</td></tr>
+      <tr><td>6</td><td>J6</td><td>DM-J4310-2EC ×1</td><td>6</td><td>0</td></tr>
+    </tbody>
+  </table>
+
+  <h3>CAN 通信协议要点（来自代码实现）</h3>
+  <p>本项目的 Python 驱动 <code>tools/motor_gui/dm_motor_driver.py</code> 与 C++ 硬件接口 <code>dmmotor_hardware_interface</code> 使用相同的达妙 MIT 协议：</p>
+  <ul>
+    <li><strong>控制帧 ID</strong> = 电机 <code>CAN_ID</code>（发送 MIT 控制、使能、失能、设零点等命令）</li>
+    <li><strong>反馈帧 ID</strong> = 电机 <code>Master ID</code>（默认 0；反馈数据 D[0] 低 4 位为电机 ID）</li>
+    <li><strong>使能命令</strong>：8 字节 <code>FF FF FF FF FF FF FF FC</code></li>
+    <li><strong>失能命令</strong>：8 字节 <code>FF FF FF FF FF FF FF FD</code></li>
+    <li><strong>设零点命令</strong>：8 字节 <code>FF FF FF FF FF FF FF FE</code>（双编码器电机此命令无效，Mockway 使用 DM4310/4340 双编码器型号）</li>
+    <li><strong>位置-速度模式</strong>：帧 ID = <code>0x100 + motor_id</code></li>
+    <li><strong>速度模式</strong>：帧 ID = <code>0x200 + motor_id</code></li>
+  </ul>
+</section>
+
+<section id="verify-id">
+  <h2>ID 验证与调试</h2>
+  <p>每台电机 ID 写入后，或全部组装完成上电前，使用项目自带的图形调试工具验证：</p>
+  <pre>python tools/motor_gui/motor_gui.py</pre>
+
+  <h3>单电机验证步骤</h3>
+  <ol>
+    <li>仅连接<strong>一台</strong>待测电机到 USB-CAN 适配器。</li>
+    <li>打开 <code>motor_gui.py</code>，配置：
+      <ul>
+        <li>COM 口：Windows 为 <code>COMx</code>，Linux 为 <code>/dev/ttyUSB0</code></li>
+        <li>串口波特率：<code>921600</code></li>
+        <li>电机类型：J1/J4/J5/J6 选 <strong>DM-J4310-2EC</strong>，J2/J3 选 <strong>DM4340</strong></li>
+        <li>电机 ID：对应 1～6</li>
+        <li>Master ID：<code>0</code>（若按达妙建议设为 CAN_ID+0x10，此处须同步修改）</li>
+      </ul>
+    </li>
+    <li>点击「连接」。若 3 秒内收到反馈，说明 ID 与接线正确。</li>
+    <li>点击「使能电机」，用正转/反转按钮测试运动。</li>
+  </ol>
+
+  <div class="img-single">
+    <img src="img/motor_gui.png" alt="motor_gui 调试界面">
+    <p style="color:var(--muted);font-size:0.9rem;">motor_gui 单电机调试界面</p>
+  </div>
+
+  <h3>六电机总线验证</h3>
+  <p>全部电机 ID 唯一且 CAN 总线正确菊花链连接后，逐台修改 GUI 中的电机 ID（1→6）重复连接测试。也可在 Linux 下使用：</p>
+  <pre>candump can0   # 应能看到各 ID 的反馈帧</pre>
+</section>
+
+<section id="software-map">
+  <h2>软件中的 ID 映射</h2>
+  <p>以下配置文件中的 ID 必须与电机实际 CAN_ID 一致，否则 MoveIt / 力矩补偿无法正常工作：</p>
+
+  <h3>1. ROS2 硬件接口（MoveIt 主配置）</h3>
+  <p>文件：<code>moveit_mockway_config/config/mockway_description.ros2_control.xacro</code></p>
+  <pre>&lt;!-- Joint 1 --&gt;
+&lt;param name="can_id"&gt;0x01&lt;/param&gt;  &lt;param name="type"&gt;1&lt;/param&gt;  &lt;!-- DM4310 --&gt;
+&lt;!-- Joint 2 --&gt;
+&lt;param name="can_id"&gt;0x02&lt;/param&gt;  &lt;param name="type"&gt;3&lt;/param&gt;  &lt;!-- DM4340 --&gt;
+&lt;!-- Joint 3 --&gt;
+&lt;param name="can_id"&gt;0x03&lt;/param&gt;  &lt;param name="type"&gt;3&lt;/param&gt;  &lt;param name="dir"&gt;-1&lt;/param&gt;
+&lt;!-- Joint 4~6: can_id 0x04~0x06, type=1 --&gt;</pre>
+  <p>电机类型枚举：<code>1</code>=DM4310，<code>3</code>=DM4340。USB-CAN 默认端口 <code>/dev/ttyUSB0</code>，波特率 921600。</p>
+
+  <h3>2. 力矩补偿 / 动力学测试</h3>
+  <p>文件：<code>tools/dynamics_test/dynamics_test.yaml</code></p>
+  <pre>motors:
+  - id: 1
+    type: "DM_J4310_2EC"
+    master_id: 0
+    direction: 1
+  - id: 2
+    type: "DM4340"
+    ...
+  - id: 3
+    type: "DM4340"
+    direction: -1</pre>
+
+  <h3>3. Python 驱动构造参数</h3>
+  <pre>motor = DMMotor(
+    can_adapter=can_adapter,
+    motor_id=1,      # CAN 命令帧 ID
+    master_id=0,     # 反馈帧 ID
+    motor_type=MotorType.DM_J4310_2EC
+)</pre>
+</section>
+
+<section id="electrical">
+  <h2>电气连接</h2>
+  <div class="img-single">
+    <img src="img/electrical_topology.png" alt="电气拓扑图" style="max-width:560px;">
+  </div>
+  <ul>
+    <li>6 台电机 CAN 总线<strong>菊花链</strong>连接（CAN_H 接 CAN_H，CAN_L 接 CAN_L）</li>
+    <li>CAN 总线两端各接 <strong>120Ω 终端电阻</strong></li>
+    <li>CAN 波特率：<strong>1 Mbps</strong></li>
+    <li>USB-CAN 适配器串口波特率：<strong>921600</strong>（维特模块，见 README）</li>
+    <li>供电：<strong>24V</strong> 统一电源</li>
+  </ul>
+  <div class="alert alert-warn">
+    <strong>注意：</strong>在仅通过 USB-CAN 逐台调试 ID 时，不需要将所有电机并联；全部 ID 配置完成后再进行总线级联与终端电阻安装。
+  </div>
+</section>
+
+<section id="step0">
+  <h2>组装前准备</h2>
+  <ul>
+    <li>完成上述 6 台电机 ID 配置与单电机验证</li>
+    <li>3D 打印全部结构件（参见 <a href="BOM.md">BOM.md</a> / MakerWorld）</li>
+    <li>准备 BOM 中列出的螺丝、热熔螺母、线材与工具</li>
+    <li>建议打印填充率 ≥ 40%，Gyroid 填充</li>
+  </ul>
+</section>
+
+<section id="step1">
+  <h2><span class="step-badge">1</span>嵌入所有热熔螺母</h2>
+  <p><strong>工具：</strong>电烙铁</p>
+
+  <h3>M2 热熔螺母</h3>
+  <p><strong>材料：</strong><code>flange.lua</code> 结构件 5 个、土八热熔螺母 M2×3×3 共 10 个</p>
+  <div class="img-single"><img src="img/asm_1_m2.png" alt="M2 热熔螺母"></div>
+
+  <h3>M3 热熔螺母</h3>
+  <p><strong>材料：</strong><code>shell.lua</code> 6 个、<code>tail.lua</code> 1 个、<code>base.lua</code> 1 个、<code>elbow.lua</code> 1 个、土八热熔螺母 M3×4×4 共 60 个</p>
+  <div class="img-grid">
+    <figure><img src="img/asm_1_m3_shell.png" alt="shell"><figcaption>shell</figcaption></figure>
+    <figure><img src="img/asm_1_m3_tail.png" alt="tail"><figcaption>tail</figcaption></figure>
+    <figure><img src="img/asm_1_m3_base.png" alt="base"><figcaption>base</figcaption></figure>
+    <figure><img src="img/asm_1_m3_elbow.png" alt="elbow"><figcaption>elbow</figcaption></figure>
+  </div>
+</section>
+
+<section id="step2">
+  <h2><span class="step-badge">2</span>安装所有电机到 shell</h2>
+  <p><strong>材料：</strong><code>shell.lua</code> 6 个、DM4310 电机 4 个（J1/J4/J5/J6）、DM4340 电机 2 个（J2/J3）、沉头十字螺丝 M3×8 共 36 个</p>
+  <p><strong>工具：</strong>十字螺丝刀</p>
+  <div class="alert alert-info">安装前确认每台电机外壳已贴好 J1～J6 标签，对应 ID 1～6，避免后续接线混淆。</div>
+  <div class="img-single"><img src="img/asm_2.png" alt="电机入壳"></div>
+</section>
+
+<section id="step3">
+  <h2><span class="step-badge">3</span>安装所有法兰到电机转子</h2>
+  <p><strong>材料：</strong>装完电机的 shell 6 个、<code>flange.lua</code> 5 个、<code>tail.lua</code> 1 个、沉头十字螺丝 M3×12 共 36 个</p>
+  <p><strong>工具：</strong>十字螺丝刀</p>
+  <div class="img-single"><img src="img/asm_3.png" alt="法兰安装"></div>
+</section>
+
+<section id="step4">
+  <h2><span class="step-badge">4</span>安装关节 1 到基座</h2>
+  <p><strong>材料：</strong><code>base.lua</code> 1 个、DM4310 关节（J1）1 个、外六角螺丝 M3×8 共 6 个、十字平头螺丝 M2×6 共 2 个</p>
+  <p><strong>工具：</strong>开口扳手 5.5 mm、十字螺丝刀</p>
+  <ol>
+    <li>将外六角螺丝 M3×8 预先拧入 <code>base.lua</code> 的热熔螺母（不必完全拧紧）。</li>
+    <li>法兰两侧 M2 热熔螺母对准基座 M2 通孔，沿圆弧槽旋转，使法兰大孔对准外六角螺丝头。</li>
+    <li>所有螺丝头穿过关节法兰后，将螺丝转入法兰圆弧槽内。</li>
+    <li>用十字平头螺丝 M2×6 穿过基座 M2 通孔，固定在关节上。</li>
+    <li>用开口扳手 5.5 mm 将外六角螺丝拧紧在基座上。</li>
+  </ol>
+</section>
+
+<section id="step5">
+  <h2><span class="step-badge">5</span>组装上臂</h2>
+  <p><strong>材料：</strong>DM4340 关节（J2、J3）2 个、<code>linkage.lua</code>（长）1 个、内六角螺丝钉 M3×10 共 12 个、XT30(2+2) 线 2 根、导线若干、焊锡、热缩管或电工胶布</p>
+  <p><strong>工具：</strong>电烙铁、内六角扳手</p>
+  <ol>
+    <li>将 XT30(2+2) 线插入关节 2，导线经电机上方剩余导线孔穿入 shell 内。</li>
+    <li>关节 3 同上。</li>
+    <li>将 4 条延长线插入 <code>linkage.lua</code>（长）的导线孔。</li>
+    <li>延长线两端分别经 J2、J3 法兰槽通孔穿入 shell，至电机顶部。</li>
+    <li>焊接所有导线（注意 CAN_H/CAN_L 极性一致）。</li>
+    <li>用内六角螺丝 M3×10 将 J2、J3 固定到长连杆，<strong>两关节轴须同向</strong>。</li>
+  </ol>
+</section>
+
+<section id="step6">
+  <h2><span class="step-badge">6</span>安装上臂到关节 1</h2>
+  <p><strong>材料：</strong>当前本体 1 套、上臂 1 套、外六角螺丝 M3×8 共 6 个、十字平头螺丝 M2×6 共 2 个</p>
+  <p><strong>工具：</strong>开口扳手 5.5 mm、十字螺丝刀</p>
+  <p>将 J2 安装到 J1，步骤与「关节 1 安装到底座」相同。</p>
+  <div class="alert alert-warn">关节 1 底部的 M2 螺丝较难安装，此阶段可先只安装顶部 M2 螺丝。</div>
+</section>
+
+<section id="step7">
+  <h2><span class="step-badge">7</span>组装前臂</h2>
+  <p><strong>材料：</strong>DM4310 关节（J4）1 个、<code>elbow.lua</code> 1 个、<code>linkage.lua</code>（短）1 个、内六角螺丝 M3×10 共 12 个、XT30(2+2) 线 2 根、导线若干、焊锡、热缩管</p>
+  <p><strong>工具：</strong>电烙铁、内六角扳手</p>
+  <ol>
+    <li>XT30 线插入 J4，导线经电机上方孔穿入 shell。</li>
+    <li>4 条延长线插入短连杆导线孔。</li>
+    <li>一端经 J4 法兰槽穿入 shell 至电机顶部；另一端经 <code>elbow.lua</code> 侧边方形孔穿出。</li>
+    <li>焊接所有导线。</li>
+    <li>用 M3×10 将 J4 与 elbow 固定到短连杆，注意两轴轴向关系。</li>
+  </ol>
+</section>
+
+<section id="step8">
+  <h2><span class="step-badge">8</span>安装前臂到关节 3</h2>
+  <p><strong>材料：</strong>当前本体、前臂、外六角螺丝 M3×8 ×6、十字平头螺丝 M2×6 ×2</p>
+  <p><strong>工具：</strong>开口扳手 5.5 mm、十字螺丝刀</p>
+  <p>将 elbow 安装到 J3，步骤同关节 1 安装到底座。</p>
+</section>
+
+<section id="step9">
+  <h2><span class="step-badge">9</span>安装关节 5 和关节 6</h2>
+  <p><strong>材料：</strong>DM4310 关节（J5、J6）2 个、外六角螺丝 M3×8 共 12 个、十字平头螺丝 M2×6 共 4 个</p>
+  <p><strong>工具：</strong>开口扳手 5.5 mm、十字螺丝刀</p>
+  <ol>
+    <li>将 J5 安装到 J4，步骤同关节 1 安装到底座。</li>
+    <li>将 J6 安装到 J5，步骤相同。</li>
+  </ol>
+  <p>完成机械组装后，进行 CAN 总线菊花链连接、120Ω 终端电阻与 24V 供电。</p>
+</section>
+
+<section id="step10">
+  <h2><span class="step-badge">10</span>关节零点标定</h2>
+  <p>机械组装完成后，使用 <code>motor_gui.py</code> 对各关节进行零点标定，零点姿态需与 URDF 模型一致。</p>
+  <pre>python tools/motor_gui/motor_gui.py</pre>
+  <ol>
+    <li>逐关节连接（修改电机 ID 1～6，电机类型 J2/J3 选 DM4340，其余选 DM-J4310-2EC）。</li>
+    <li>将机械臂手动移动到 URDF 定义的零位姿态（可使用 A 型平键销 M3×3×6 辅助对齐）。</li>
+    <li>点击「设置零点」—— 注意：DM4310/4340 为双编码器电机，<code>set_zero</code> 命令在驱动中标注为对双编码器无效；实际标定方法请参考 README 中的 <code>calibrate_joint.jpg</code> 图示与项目说明。</li>
+  </ol>
+  <div class="img-single">
+    <img src="img/calibrate_joint.jpg" alt="关节零点标定" style="max-width:400px;">
+  </div>
+</section>
+
+<section id="troubleshoot">
+  <h2>故障排查</h2>
+  <table>
+    <thead>
+      <tr><th>现象</th><th>可能原因</th><th>处理办法</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>motor_gui 连接后无反馈</td>
+        <td>电机 ID / Master ID 不匹配；CAN 接线错误；未上电</td>
+        <td>用达妙助手 Read Param 核对 ID；检查 CAN_H/L；确认 24V 供电</td>
+      </tr>
+      <tr>
+        <td>多台电机同时连接时混乱</td>
+        <td>存在重复 CAN_ID</td>
+        <td>逐台断开，单独用调试助手重新 Write Param</td>
+      </tr>
+      <tr>
+        <td>MoveIt 某关节无响应</td>
+        <td><code>ros2_control.xacro</code> 中 can_id 与电机不一致</td>
+        <td>对照本文 ID 表检查 xacro 与 <code>dynamics_test.yaml</code></td>
+      </tr>
+      <tr>
+        <td>J3 方向相反</td>
+        <td>软件中 J3 的 <code>dir=-1</code></td>
+        <td>属正常配置，勿随意改电机 ID；方向在 xacro 的 dir 参数修正</td>
+      </tr>
+      <tr>
+        <td>CAN 总线无数据</td>
+        <td>缺少 120Ω 终端电阻；波特率非 1M</td>
+        <td>总线两端加 120Ω；确认适配器与电机均为 1 Mbps</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>快速 CAN 测试命令（Linux / SocketCAN）</h3>
+  <pre># 使能 ID=1 的电机
+cansend can0 001#FFFFFFFFFFFFFFFFFC
+
+# 监听总线
+candump can0</pre>
+</section>
+
+</main>
+
+<footer>
+  <p>牧卫机器人 Mockway Robotics · 组装指南 HTML 版 · 基于仓库代码与 doc/组装指南.md 生成</p>
+  <p>相关文档：<a href="BOM.md">BOM.md</a> · <a href="组装指南.md">组装指南.md</a> · <a href="../README.md">README.md</a></p>
+</footer>
+
+</body>
+</html>
