@@ -348,6 +348,46 @@ conda activate mockway_dynamics
 conda install pinocchio -c conda-forge -y
 pip install -r requirements.txt</pre>
 
+  <h4>pip 使用国内镜像源（下载过慢时）</h4>
+  <p>若默认 PyPI 源速度较慢，可在单次命令中通过 <code>-i</code> 指定国内镜像：</p>
+  <pre># 清华大学（常用）
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 阿里云
+pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
+
+# 中国科技大学
+pip install -r requirements.txt -i https://pypi.mirrors.ustc.edu.cn/simple/
+
+# 腾讯云
+pip install -r requirements.txt -i https://mirrors.cloud.tencent.com/pypi/simple</pre>
+  <p>安装单个包时同样适用，例如：</p>
+  <pre>pip install pyserial -i https://pypi.tuna.tsinghua.edu.cn/simple</pre>
+  <p>若提示 SSL/证书相关警告，可追加 <code>--trusted-host</code>（以清华源为例）：</p>
+  <pre># Linux / macOS
+pip install -r requirements.txt \
+  -i https://pypi.tuna.tsinghua.edu.cn/simple \
+  --trusted-host pypi.tuna.tsinghua.edu.cn
+
+# Windows（CMD / PowerShell 单行）
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn</pre>
+  <p>如需<strong>永久生效</strong>，可写入 pip 配置文件，之后普通 <code>pip install</code> 即走国内源：</p>
+  <table>
+    <thead>
+      <tr><th>系统</th><th>配置文件路径</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Windows</td><td><code>%APPDATA%\pip\pip.ini</code></td></tr>
+      <tr><td>Linux / macOS</td><td><code>~/.pip/pip.conf</code></td></tr>
+    </tbody>
+  </table>
+  <pre>[global]
+index-url = https://pypi.tuna.tsinghua.edu.cn/simple
+trusted-host = pypi.tuna.tsinghua.edu.cn</pre>
+  <p><code>motor_gui</code> 依赖安装示例：</p>
+  <pre>cd tools/motor_gui
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple</pre>
+
   <h4>2. 配置文件</h4>
   <p>编辑 <code>tools/dynamics_test/dynamics_test.yaml</code>，确保与电机实际 ID、接线一致：</p>
   <pre>can:
