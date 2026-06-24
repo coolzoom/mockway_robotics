@@ -311,11 +311,12 @@
     <li>仅连接<strong>一台</strong>待测电机到 USB-CAN 适配器。</li>
     <li>打开 <code>motor_gui.py</code>，配置：
       <ul>
-        <li>COM 口：Windows 为 <code>COMx</code>，Linux 为 <code>/dev/ttyUSB0</code></li>
+        <li><strong>USB-CAN 类型</strong>：达妙官方模块选「达妙 USB-CAN」，维特模块选「维特 USB-CAN」</li>
+        <li>COM 口：Windows 为 <code>COMx</code>，Linux 为 <code>/dev/ttyUSB0</code>（须为 USB-CAN 模块口，非电机调试串口）</li>
         <li>串口波特率：<code>921600</code></li>
         <li>电机类型：J1/J4/J5/J6 选 <strong>DM-J4310-2EC</strong>，J2/J3 选 <strong>DM4340</strong></li>
         <li>电机 ID：对应 1～6</li>
-        <li>Master ID：<code>0</code>（若按达妙建议设为 CAN_ID+0x10，此处须同步修改）</li>
+        <li>Master ID：<code>0</code>（填 0 时按反馈数据内 ID 自动匹配）</li>
       </ul>
     </li>
     <li>点击「连接」。若 3 秒内收到反馈，说明 ID 与接线正确。</li>
@@ -330,6 +331,103 @@
   <h3>六电机总线验证</h3>
   <p>全部电机 ID 唯一且 CAN 总线正确菊花链连接后，逐台修改 GUI 中的电机 ID（1→6）重复连接测试。也可在 Linux 下使用：</p>
   <pre>candump can0   # 应能看到各 ID 的反馈帧</pre>
+
+  <h3>力矩补偿测试（整臂联调）</h3>
+  <p>完成六电机 ID 验证、机械组装及关节零点标定后，可通过<strong>实时力矩补偿</strong>程序验证整臂通信、动力学模型与重力补偿是否正常。该步骤在单电机 <code>motor_gui</code> 调试之后、运行 MoveIt 之前进行。</p>
+
+  <div class="alert alert-warn">
+    <strong>安全警告：</strong>力矩模式若准备不充分易发生<strong>飞车（失控）</strong>。首次测试务必清空工作区、手边可及紧急断电，并严格按下列顺序操作。
+  </div>
+
+  <h4>1. 安装依赖</h4>
+  <pre>cd tools/dynamics_test
+pip install -r requirements.txt</pre>
+  <p>依赖包括 <strong>pinocchio</strong>（刚体动力学）、numpy、matplotlib。也可使用 conda：</p>
+  <pre>conda create -n mockway_dynamics python=3.10 -y
+conda activate mockway_dynamics
+conda install pinocchio -c conda-forge -y
+pip install -r requirements.txt</pre>
+
+  <h4>2. 配置文件</h4>
+  <p>编辑 <code>tools/dynamics_test/dynamics_test.yaml</code>，确保与电机实际 ID、接线一致：</p>
+  <pre>can:
+  port: "COM8"              # 改为你的 USB-CAN COM 口（与 motor_gui 相同）
+  serial_baudrate: 921600
+  can_baudrate: 1000000
+
+motors:
+  - id: 1
+    type: "DM_J4310_2EC"
+    master_id: 0
+    direction: 1
+  - id: 2
+    type: "DM4340"
+    ...
+  - id: 3
+    type: "DM4340"
+    direction: -1          # J3 反向，与 ros2_control 一致
+  # id 4~6 略
+
+control:
+  rate: 200
+  compensation_mode: "gravity"
+  mit_params:
+    kp: 0.0                # 纯力矩控制，位置增益为 0
+    kd: 1.0                # 首次测试建议 1.0，增加阻尼防振荡</pre>
+  <p>六路电机 ID、型号、<code>direction</code> 须与上文「软件中的 ID 映射」及 <code>mockway_description.ros2_control.xacro</code> 完全一致。</p>
+
+  <h4>3. 测试前检查清单</h4>
+  <ul>
+    <li>机械结构与 URDF 模型一致，各关节零点已标定</li>
+    <li>24V 供电、CAN 菊花链及 120Ω 终端电阻已接好</li>
+    <li>六台电机均已通过 <code>motor_gui</code> 单电机/总线验证</li>
+    <li>工作区无障碍物，可快速切断电源</li>
+  </ul>
+
+  <h4>4. 力矩值预验证（推荐）</h4>
+  <p>首次运行前，可在 <code>realtime_torque_compensation.py</code> 中<strong>暂时注释</strong> <code>controller.enable_motors()</code>，先启动程序观察 Pinocchio 计算的力矩值是否在合理范围（J1/J4/J5/J6 约 ±10 Nm 内，J2/J3 约 ±28 Nm 内）。确认无误后再恢复使能。</p>
+
+  <h4>5. 运行重力补偿测试</h4>
+  <pre>cd tools/dynamics_test
+python realtime_torque_compensation.py</pre>
+  <p>进入交互菜单后：</p>
+  <ol>
+    <li>选择 <strong>「1. 启动重力补偿」</strong>（对应 <code>compensation_mode: "gravity"</code>，仅补偿重力项 <code>τ = g(q)</code>）</li>
+    <li>手动缓慢拖动各关节，机械臂应接近<strong>「失重」</strong>感，无明显下坠或猛甩</li>
+    <li>测试完成后选择 <strong>「3. 停止补偿」</strong>，再选 <strong>「0. 退出」</strong>；也可随时按 <kbd>Ctrl+C</kbd> 紧急停止</li>
+  </ol>
+  <p>也可直接以演示模式启动（跳过菜单）：</p>
+  <pre>python realtime_torque_compensation.py --demo gravity
+python realtime_torque_compensation.py --can-port COM8   # 覆盖 yaml 中的端口</pre>
+
+  <div class="img-single">
+    <img src="img/torque_compensation.png" alt="力矩补偿运行界面">
+    <p style="color:var(--muted);font-size:0.9rem;">实时力矩补偿程序运行界面（重力补偿模式）</p>
+  </div>
+
+  <h4>6. 补偿模式说明</h4>
+  <table>
+    <thead>
+      <tr><th>模式</th><th>菜单选项</th><th>补偿内容</th><th>适用场景</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>gravity</td><td>1. 启动重力补偿</td><td>仅重力 <code>g(q)</code></td><td><strong>首次测试推荐</strong>、手动示教</td></tr>
+      <tr><td>full_dynamics</td><td>2. 启动完整动力学补偿</td><td>惯性 + 科氏 + 离心 + 重力</td><td>快速运动、进阶验证</td></tr>
+      <tr><td>none</td><td>—</td><td>无补偿</td><td>对比测试</td></tr>
+    </tbody>
+  </table>
+
+  <h4>7. 预期现象与异常处理</h4>
+  <ul>
+    <li><strong>正常：</strong>重力补偿开启后，各关节可轻松用手推动，松手后无明显剧烈摆动</li>
+    <li><strong>某关节反力过大/过小：</strong>检查该关节 <code>direction</code> 是否与 xacro 一致；复查零点标定</li>
+    <li><strong>抖动或飞车：</strong>增大 <code>mit_params.kd</code>（如 1.0→2.0）；确认 URDF 质量/惯量与实物接近</li>
+    <li><strong>无法连接电机：</strong>核对 <code>dynamics_test.yaml</code> 中 <code>can.port</code>、电机 ID；关闭占用 COM 口的其他程序（含达妙助手、motor_gui）</li>
+  </ul>
+
+  <div class="alert alert-info">
+    <strong>说明：</strong>离线动力学仿真（不连硬件）可运行 <code>python inverse_dynamics_test.py</code>，用于验证 URDF 与 Pinocchio 模型；整臂联调以 <code>realtime_torque_compensation.py</code> 为准。
+  </div>
 </section>
 
 <section id="software-map">
