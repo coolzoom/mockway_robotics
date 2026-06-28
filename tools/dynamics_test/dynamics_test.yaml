@@ -15,7 +15,7 @@ motors:
     type: "DM_J4310_2EC"
     master_id: 0
     direction: 1
-    compensation_enabled: false
+    compensation_enabled: true
     hold_kp: 50.0             # 未补偿关节：锁定启动时姿态
     description: "Joint 1 - Shoulder"
 
@@ -32,7 +32,7 @@ motors:
     type: "DM4340"
     master_id: 0
     direction: -1
-    compensation_enabled: false
+    compensation_enabled: true
     hold_kp: 80.0
     hold_kd: 2.0
     description: "Joint 3 - Forearm"
@@ -41,14 +41,14 @@ motors:
     type: "DM_J4310_2EC"
     master_id: 0
     direction: 1
-    compensation_enabled: false
+    compensation_enabled: true
     description: "Joint 4 - Wrist Pitch"
 
   - id: 5
     type: "DM_J4310_2EC"
     master_id: 0
     direction: 1
-    compensation_enabled: false
+    compensation_enabled: true
     description: "Joint 5 - Wrist Roll"
 
   - id: 6
