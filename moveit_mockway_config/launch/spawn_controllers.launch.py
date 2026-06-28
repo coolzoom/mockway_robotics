@@ -3,18 +3,20 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    # 同一 spawner 按顺序加载，避免两个 spawner 并行抢 controller_manager 锁
+    spawner_args = ["--controller-manager-timeout", "120"]
+
     return LaunchDescription(
         [
             Node(
                 package="controller_manager",
                 executable="spawner",
-                arguments=[
-                    "joint_state_broadcaster",
-                    "mockway_group_controller",
-                    "--controller-manager-timeout",
-                    "120",
-                ],
+                arguments=["joint_state_broadcaster", *spawner_args],
+                output="screen",
+            ),
+            Node(
+                package="controller_manager",
+                executable="spawner",
+                arguments=["mockway_group_controller", *spawner_args],
                 output="screen",
             ),
         ]

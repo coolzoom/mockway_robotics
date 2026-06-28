@@ -33,32 +33,6 @@ CAN设备使用[维特USB-CAN模块](https://detail.tmall.com/item.htm?id=598670
 
 ## 🚀 程序运行
 
-### 🛠️ 开发环境菜单（推荐）
-
-| 平台 | 脚本 | 功能 |
-|------|------|------|
-| Windows | `setup_win_tools.bat` | **[1–6]** Miniconda + 调试工具；**[11–19]** WSL / MoveIt / 桌面 |
-| Ubuntu / WSL | `setup_ubuntu.sh` | conda 工具 + MoveIt + **安装/启动 XFCE 桌面** |
-
-**启动带桌面的 Ubuntu（WSL2，需 Win11 / Win10 22H2+ WSLg）：**
-
-```bat
-setup_win_tools.bat desktop
-REM 或: setup_win_tools.bat 19
-```
-
-首次会自动安装 XFCE。桌面启动后，在 XFCE 终端里运行 `./setup_ubuntu.sh` 再开 motor_gui / MoveIt。
-
-Ubuntu / WSL 内：
-
-```bash
-chmod +x setup_ubuntu.sh
-./setup_ubuntu.sh 11          # 启动桌面
-./setup_ubuntu.sh             # 在桌面终端里选 [2-4] 调试 / [20-27] MoveIt
-```
-
-Windows 双击 `setup_win_tools.bat` 即可。
-
 ### 🎮 电机调试
 
 单个电机运动调试和关节零点标定的界面
@@ -115,7 +89,7 @@ source ~/mockway_ws/install/setup.bash
 5. 启动程序（默认真机，需 USB-CAN 与 24V 供电）
 
 ```bash
-# WSL 先透传 USB: setup_win_tools.bat 16
+# WSL 先透传 USB: tools\setup_wsl_moveit.bat 6
 ros2 launch moveit_mockway_config demo.launch.py
 # 无硬件仿真:
 ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=true

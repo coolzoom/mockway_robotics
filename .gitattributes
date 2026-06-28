@@ -1,4 +1,2 @@
 # Shell scripts must use LF for WSL/Linux
 *.sh text eol=lf
-# Windows batch files must use CRLF
-*.bat text eol=crlf
