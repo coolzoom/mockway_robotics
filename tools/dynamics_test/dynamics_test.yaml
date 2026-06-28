@@ -23,28 +23,28 @@ motors:
     type: "DM4340"
     master_id: 0
     direction: 1
-    compensation_enabled: false
+    compensation_enabled: true
     description: "Joint 2 - Elbow"
 
   - id: 3
     type: "DM4340"
     master_id: 0
     direction: -1
-    compensation_enabled: false
+    compensation_enabled: true
     description: "Joint 3 - Forearm"
 
   - id: 4
     type: "DM_J4310_2EC"
     master_id: 0
     direction: 1
-    compensation_enabled: false
+    compensation_enabled: true
     description: "Joint 4 - Wrist Pitch"
 
   - id: 5
     type: "DM_J4310_2EC"
     master_id: 0
     direction: 1
-    compensation_enabled: false
+    compensation_enabled: true
     description: "Joint 5 - Wrist Roll"
 
   - id: 6
