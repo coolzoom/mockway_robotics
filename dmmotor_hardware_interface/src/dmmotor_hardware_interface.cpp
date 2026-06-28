@@ -122,6 +122,7 @@ private:
     double kd;
     double dir;
     bool is_simulated;  // 是否为仿真电机
+    bool position_valid{false};  // 是否已读到有效反馈位置
     DM_Motor_Type type;
     Limit_param limit_param{};
   };
@@ -135,6 +136,8 @@ private:
   std::string can_interface_;     // CAN接口名称（can0）或串口设备路径（/dev/ttyUSB0）
   std::vector<uint8_t> usb_can_rx_buffer_;  // USB-CAN接收缓冲区
   bool is_sim_hardware{true};     // 是否为仿真硬件接口，遇到非仿真关节时设置false，默认true
+  bool hold_safe_mode_{false};    // 激活后短时零增益保持，防止控制器命令突变
+  int hold_cycles_remaining_{0};
 
   // 电机列表
   std::vector<DamiaoMotor> motors_;
@@ -156,6 +159,9 @@ private:
   void disable_motor(uint32_t can_id);
   bool reset_motor(uint32_t can_id);
   void send_mit_command(const DamiaoMotor& motor);
+  void send_mit_zero_gain_hold(const DamiaoMotor& motor);
+  void send_mit_position_hold(const DamiaoMotor& motor);
+  void hold_configured_motors();
   bool parse_motor_feedback(const struct can_frame& frame, DamiaoMotor& motor);
   
   // 数据转换函数
@@ -339,6 +345,19 @@ hardware_interface::CallbackReturn DMMototHardwareInterface::on_configure(
     }
   }
 
+  if (!is_sim_hardware) {
+    for (int i = 0; i < 10; ++i) {
+      hold_configured_motors();
+      struct can_frame frame;
+      while (receive_can_frame(frame)) {
+        for (auto& motor : motors_) {
+          parse_motor_feedback(frame, motor);
+        }
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+  }
+
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -380,13 +399,27 @@ hardware_interface::CallbackReturn DMMototHardwareInterface::on_activate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"), "Activating...");
-  
-  // 启用所有电机
-  for (const auto& motor : motors_)
-  {
+
+  for (auto& motor : motors_) {
+    if (motor.is_simulated) {
+      continue;
+    }
     enable_motor(motor.can_id);
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    // 命令与实测对齐，避免控制器接管时从 0 猛跳
+    motor.cmd_position = motor.position;
+    motor.cmd_velocity = 0.0;
+    motor.cmd_effort = 0.0;
+    send_mit_position_hold(motor);
   }
+
+  // 激活后约 300ms：命令对齐实测位置并用 MIT 刚度保持，避免零增益塌陷
+  hold_safe_mode_ = !is_sim_hardware;
+  hold_cycles_remaining_ = 30;
+
+  RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"),
+              "Startup sync hold for %d cycles (MIT stiffness at current position)",
+              hold_cycles_remaining_);
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -455,13 +488,37 @@ hardware_interface::return_type DMMototHardwareInterface::read(
 hardware_interface::return_type DMMototHardwareInterface::write(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
+  if (hold_safe_mode_ && hold_cycles_remaining_ > 0) {
+    for (auto& motor : motors_) {
+      if (!motor.is_simulated) {
+        motor.cmd_position = motor.position;
+        motor.cmd_velocity = 0.0;
+        motor.cmd_effort = 0.0;
+        send_mit_position_hold(motor);
+      }
+    }
+    --hold_cycles_remaining_;
+    if (hold_cycles_remaining_ <= 0) {
+      hold_safe_mode_ = false;
+      for (auto& motor : motors_) {
+        if (!motor.is_simulated) {
+          motor.cmd_position = motor.position;
+          motor.cmd_velocity = 0.0;
+          motor.cmd_effort = 0.0;
+        }
+      }
+      RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"),
+                  "Startup sync complete; trajectory control active");
+    }
+    return hardware_interface::return_type::OK;
+  }
+
   // 向每个电机发送MIT模式控制命令（跳过仿真电机）
   for (const auto& motor : motors_)
   {
     if (!motor.is_simulated) {
       send_mit_command(motor);
     }
-    // RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"), "[%d]cmd_effort:%f", motor.can_id, motor.cmd_effort);
   }
 
   return hardware_interface::return_type::OK;
@@ -1016,14 +1073,20 @@ bool DMMototHardwareInterface::read_initial_motor_position(DamiaoMotor& motor)
   struct can_frame frame;
   auto start_time = std::chrono::steady_clock::now();
   while (std::chrono::steady_clock::now() - start_time < std::chrono::milliseconds(5000)) {
-    DamiaoMotor keepalive = motor;
-    keepalive.cmd_position = 0.0;
-    keepalive.cmd_velocity = 0.0;
-    keepalive.cmd_effort = 0.0;
-    send_mit_command(keepalive);
+    hold_configured_motors();
+    if (!motor.position_valid) {
+      // 尚未知位置：仅零增益保通信，避免把目标拉到 0
+      send_mit_zero_gain_hold(motor);
+    } else {
+      send_mit_position_hold(motor);
+    }
 
     if (receive_can_frame(frame) && parse_motor_feedback(frame, motor)) {
+      motor.position_valid = true;
       motor.cmd_position = motor.position;
+      motor.cmd_velocity = 0.0;
+      motor.cmd_effort = 0.0;
+      send_mit_position_hold(motor);
       RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"),
                   "Motor 0x%03X initial position: %.3f rad", motor.can_id, motor.position);
       return true;
@@ -1120,6 +1183,35 @@ void DMMototHardwareInterface::send_mit_command(const DamiaoMotor& motor)
   data[7] = t_ff & 0xFF;
   
   send_can_frame(motor.can_id, data, 8);
+}
+
+void DMMototHardwareInterface::send_mit_zero_gain_hold(const DamiaoMotor& motor)
+{
+  DamiaoMotor hold = motor;
+  hold.kp = 0.0;
+  hold.kd = 0.0;
+  hold.cmd_velocity = 0.0;
+  hold.cmd_effort = 0.0;
+  hold.cmd_position = motor.position;
+  send_mit_command(hold);
+}
+
+void DMMototHardwareInterface::send_mit_position_hold(const DamiaoMotor& motor)
+{
+  DamiaoMotor hold = motor;
+  hold.cmd_velocity = 0.0;
+  hold.cmd_effort = 0.0;
+  hold.cmd_position = motor.position;
+  send_mit_command(hold);
+}
+
+void DMMototHardwareInterface::hold_configured_motors()
+{
+  for (auto& motor : motors_) {
+    if (!motor.is_simulated && motor.position_valid) {
+      send_mit_position_hold(motor);
+    }
+  }
 }
 
 bool DMMototHardwareInterface::parse_motor_feedback(const struct can_frame& frame, DamiaoMotor& motor)
