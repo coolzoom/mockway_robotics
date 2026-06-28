@@ -94,6 +94,8 @@ ros2 launch moveit_mockway_config demo.launch.py
 
 ![moveit_demo](doc/img/moveit_demo.png)
 
+**MoveIt 启动卡住？** 若终端反复出现 `Failed to acquire lock in 20 seconds`（`spawner_mockway_group_controller`），且 RViz 一直停在启动界面，多半是 **电机 CAN 连线或供电问题**（接线松动、CAN_H/L 接反、未上 24V、ID 冲突等）。请先逐台检查电机与 USB-CAN 模块，用 `motor_gui` 确认各关节能单独通信；仅做界面仿真时可加 `use_mock_hardware:=true` 排除软件问题。详见 [组装指南 · 故障排查](doc/组装指南.html#troubleshoot)。
+
 ### 🖥️ 完整程序
 
 1. 安装`lua`

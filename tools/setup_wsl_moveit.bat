@@ -39,10 +39,11 @@ echo  [4] 打开 WSL 工作 Shell
 echo  [5] 修复 WSL 0x80370114 (Hypervisor / vmcompute)  ^[需管理员^]
 echo  [6] USB-CAN 透传到 WSL  ^[需管理员^]
 echo  [7] 跳过 WSL 安装，仅配置 MoveIt/usbipd  ^[需管理员^]
+echo  [8] 断开 USB 透传 (COM 归还 Windows)  ^[需管理员^]
 echo  [0] 退出
 echo.
 set "MENU_CHOICE="
-set /p MENU_CHOICE=请选择 [0-7]:
+set /p MENU_CHOICE=请选择 [0-8]:
 if "%MENU_CHOICE%"=="1" goto DoFullInstall
 if "%MENU_CHOICE%"=="2" goto DoInstallDeps
 if "%MENU_CHOICE%"=="3" goto DoLaunchDemo
@@ -50,6 +51,7 @@ if "%MENU_CHOICE%"=="4" goto DoWslShell
 if "%MENU_CHOICE%"=="5" goto DoFixHypervisor
 if "%MENU_CHOICE%"=="6" goto DoUsbAttach
 if "%MENU_CHOICE%"=="7" goto DoSkipWslInstall
+if "%MENU_CHOICE%"=="8" goto DoUsbDetach
 if "%MENU_CHOICE%"=="0" exit /b 0
 echo 无效选择，请重试。
 timeout /t 2 >nul
@@ -63,6 +65,7 @@ if "%MENU_CHOICE%"=="4" goto DoWslShell
 if "%MENU_CHOICE%"=="5" goto DoFixHypervisor
 if "%MENU_CHOICE%"=="6" goto DoUsbAttach
 if "%MENU_CHOICE%"=="7" goto DoSkipWslInstall
+if "%MENU_CHOICE%"=="8" goto DoUsbDetach
 echo [错误] 无效选项: %MENU_CHOICE%
 exit /b 1
 
@@ -107,11 +110,29 @@ REM ============================================================
 call :ResolveDistro
 if errorlevel 1 goto AfterAction
 call :ResolveWslUser
+echo.
+net session >nul 2>&1
+if not errorlevel 1 (
+    echo [警告] 当前是管理员命令行 — WSLg 图形窗口常会空白或无法显示。
+    echo 请改用以下任一方式启动 RViz:
+    echo   1. 双击: tools\launch_moveit_demo.bat
+    echo   2. 普通 CMD 运行: tools\setup_wsl_moveit.bat 3
+    echo.
+    echo 正在尝试通过 explorer 以普通权限启动 ...
+    explorer.exe "%SCRIPT_DIR%launch_moveit_demo.bat"
+    set "RC=0"
+    goto AfterAction
+)
 echo [mockway] 启动 MoveIt2 Demo (WSL: %DISTRO%, user: %WSL_USER%) ...
+call :WinToWslPath "%WSL_DIR%launch_moveit_demo.sh"
+if errorlevel 1 (
+    set "RC=1"
+    goto AfterAction
+)
 if /I not "%WSL_USER%"=="root" (
-    wsl -d %DISTRO% -u %WSL_USER% -- bash -lc "source /opt/ros/jazzy/setup.bash && source ~/mockway_ws/install/setup.bash && ros2 launch moveit_mockway_config demo.launch.py"
+    wsl -d %DISTRO% -u %WSL_USER% -- bash -lc "sed 's/\r$//' '!_WSL_PATH!' | bash"
 ) else (
-    wsl -d %DISTRO% -- bash -lc "source /opt/ros/jazzy/setup.bash && source ~/mockway_ws/install/setup.bash && ros2 launch moveit_mockway_config demo.launch.py"
+    wsl -d %DISTRO% -- bash -lc "sed 's/\r$//' '!_WSL_PATH!' | bash"
 )
 set "RC=!ERRORLEVEL!"
 goto AfterAction
@@ -147,10 +168,41 @@ echo.
 echo ============================================================
 echo  USB-CAN 透传到 WSL2 (需管理员)
 echo  请先插入 USB-CAN 适配器
+if not "%~2"=="" (
+    echo  指定 BusId: %~2
+    set "MOCKWAY_USB_BUSID=%~2"
+) else (
+    set "MOCKWAY_USB_BUSID="
+)
+echo  也可: tools\setup_wsl_moveit.bat 6 5-1
 echo ============================================================
 echo.
 call :RunAdminPs1 "usb"
 set "RC=!ERRORLEVEL!"
+set "MOCKWAY_USB_BUSID="
+goto AfterAction
+
+REM ============================================================
+REM  [8] 断开 USB 透传
+REM ============================================================
+:DoUsbDetach
+echo.
+echo ============================================================
+echo  断开 USB 透传 (WSL -^> Windows)
+if not "%~2"=="" (
+    echo  指定 BusId: %~2
+    set "MOCKWAY_USB_BUSID=%~2"
+) else (
+    set "MOCKWAY_USB_BUSID="
+)
+if /I "%~3"=="unbind" set "MOCKWAY_USB_UNBIND=1"
+echo  用法: tools\setup_wsl_moveit.bat 8 [BusId] [unbind]
+echo ============================================================
+echo.
+call :RunAdminPs1 "usb_detach"
+set "RC=!ERRORLEVEL!"
+set "MOCKWAY_USB_BUSID="
+set "MOCKWAY_USB_UNBIND="
 goto AfterAction
 
 REM ============================================================
@@ -246,6 +298,17 @@ exit /b 1
 set "WSL_USER=test"
 wsl -d %DISTRO% -u test -- true >nul 2>&1 && exit /b 0
 set "WSL_USER=root"
+exit /b 0
+
+:WinToWslPath
+set "_WSL_PATH="
+set "WIN_TMP=%~1"
+set "WIN_TMP=!WIN_TMP:\=/!"
+for /f "usebackq delims=" %%P in (`wsl wslpath -u "!WIN_TMP!" 2^>nul`) do set "_WSL_PATH=%%P"
+if not defined _WSL_PATH (
+    echo [错误] 无法转换 WSL 路径: %~1
+    exit /b 1
+)
 exit /b 0
 
 REM ============================================================
@@ -831,12 +894,182 @@ function Install-Usbipd {
     Write-Ok "usbipd is ready"
 }
 
+function Get-UsbipdDeviceRows {
+    $rows = @()
+    $section = ""
+    foreach ($line in ((usbipd list | Out-String) -split "`r?`n")) {
+        if ($line -match '(?i)^Connected:\s*$') { $section = "Connected"; continue }
+        if ($line -match '(?i)^Persisted:\s*$') { $section = "Persisted"; continue }
+        if ($line -match '(?i)^BUSID\s') { continue }
+        if ($line -match '(?i)^GUID\s') { continue }
+        if ($line -match '^\s*(\d+-\d+)\s+([0-9a-fA-F]{4}:[0-9a-fA-F]{4})\s+(.+?)\s{2,}(Not shared|Attached|Shared)\s*$') {
+            $rows += [PSCustomObject]@{
+                BusId   = $Matches[1]
+                VidPid  = $Matches[2]
+                Device  = $Matches[3].Trim()
+                State   = $Matches[4]
+                Section = $section
+            }
+        }
+    }
+    return $rows
+}
+
+function Get-UsbipdDeviceState {
+    param([string]$BusId)
+    $row = Get-UsbipdDeviceRows | Where-Object { $_.BusId -eq $BusId } | Select-Object -First 1
+    if ($row) { return $row.State }
+    return $null
+}
+
+function Invoke-UsbipdCli {
+    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$CliArgs)
+    $argLine = 'usbipd ' + ($CliArgs -join ' ')
+    $out = @(cmd /c "$argLine 2>&1")
+    @{ Output = ($out -join "`n").Trim(); ExitCode = $LASTEXITCODE }
+}
+
+function Invoke-UsbipdBindSafe {
+    param([string]$BusId)
+
+    $state = Get-UsbipdDeviceState $BusId
+    if ($state -match '^(Shared|Attached)$') {
+        Write-Host "[usb] Device $BusId already $state, skipping bind"
+        return
+    }
+
+    Write-Host "[usb] bind $BusId ..."
+    $bind = Invoke-UsbipdCli 'bind', '--busid', $BusId
+    if ($bind.Output) { Write-Host "  $($bind.Output)" }
+    if ($bind.ExitCode -ne 0) {
+        if ($bind.Output -match 'already shared') {
+            Write-Warn "Device already shared, continuing ..."
+            return
+        }
+        throw "usbipd bind failed: $($bind.Output)"
+    }
+}
+
+function Invoke-UsbipdAttachSafe {
+    param(
+        [string]$BusId,
+        [string]$Distro
+    )
+
+    $state = Get-UsbipdDeviceState $BusId
+    if ($state -eq 'Attached') {
+        Write-Host "[usb] Device $BusId already Attached to WSL, skipping attach"
+        return
+    }
+
+    Write-Host "[usb] Waking WSL ($Distro) ..."
+    wsl -d $Distro -- true 2>$null | Out-Null
+
+    Write-Host "[usb] attach to WSL ..."
+    $attempts = @(
+        @('attach', '-w', '-b', $BusId),
+        @('attach', '--wsl', '--busid', $BusId),
+        @('attach', '--wsl', $Distro, '--busid', $BusId),
+        @('attach', '--wsl', '--busid', $BusId, '--distribution', $Distro)
+    )
+
+    $attachOk = $false
+    $lastOut = ""
+    foreach ($tryArgs in $attempts) {
+        $result = Invoke-UsbipdCli @tryArgs
+        if ($result.Output) {
+            Write-Host ($result.Output -split "`n" | ForEach-Object { "  $_" })
+        }
+        $lastOut = $result.Output
+        if ($result.ExitCode -eq 0 -or $lastOut -match 'already attached|Using WSL distribution|Loading vhci_hcd') {
+            $attachOk = $true
+            break
+        }
+    }
+
+    Start-Sleep -Seconds 2
+    $state = Get-UsbipdDeviceState $BusId
+    if ($state -eq 'Attached') {
+        Write-Ok "usbipd state: Attached"
+    } elseif (-not $attachOk) {
+        throw "usbipd attach failed: $lastOut"
+    } else {
+        Write-Warn "attach finished but usbipd state is: $state (expected Attached)"
+    }
+}
+
+function Show-WslUsbSerialDevices {
+    param([string]$Distro)
+
+    $checkScript = Join-Path $ScriptDir "wsl\usb_serial_check.sh"
+    if (-not (Test-Path $checkScript)) {
+        Write-Warn "Missing script: $checkScript"
+        return
+    }
+    $winPath = ($checkScript -replace '\\', '/')
+    $wslPath = (cmd /c "wsl wslpath -u `"$winPath`"" 2>&1 | Out-String).Trim()
+    if (-not $wslPath) {
+        Write-Warn "Could not resolve WSL path for usb_serial_check.sh"
+        return
+    }
+    wsl -d $Distro -u test -- bash -lc "sed 's/\r$//' '$wslPath' | bash"
+}
+
+function Select-UsbCanBusId {
+    param([string]$PreferredBusId = "")
+
+    if ($PreferredBusId -match '^\s*(\d+-\d+)\s*$') {
+        return $Matches[1]
+    }
+
+    $exclude = @('Webcam', 'Camera', 'Bluetooth', 'Keyboard', 'Mouse', 'HID', 'DFU', 'RZ608', '输入设备', '输入')
+    $highKw = @(
+        'USB-CAN', 'USBCAN', 'CH340', 'CH341', 'CH342', 'CH343',
+        'CP210', 'FTDI', 'WCH', '2e88', '1a86', '10c4',
+        'Damiao', 'WitMotion', 'Enhanced-SERIAL', 'SERIAL CH'
+    )
+    $medKw = @('Serial', 'SERIAL', '串行', '串口', 'COM')
+
+    $scored = @()
+    foreach ($row in (Get-UsbipdDeviceRows | Where-Object { $_.Section -eq "Connected" })) {
+        $skip = $false
+        foreach ($ex in $exclude) {
+            if ($row.Device -like "*$ex*") { $skip = $true; break }
+        }
+        if ($skip) { continue }
+
+        $score = 0
+        $text = "$($row.Device) $($row.VidPid)"
+        foreach ($kw in $highKw) {
+            if ($text -match [regex]::Escape($kw)) { $score += 10 }
+        }
+        foreach ($kw in $medKw) {
+            if ($text -match [regex]::Escape($kw)) { $score += 5 }
+        }
+        if ($row.Device -match '\(COM\d+\)') { $score += 3 }
+
+        if ($score -gt 0) {
+            $scored += [PSCustomObject]@{
+                BusId  = $row.BusId
+                Device = $row.Device
+                VidPid = $row.VidPid
+                Score  = $score
+            }
+        }
+    }
+
+    if ($scored.Count -eq 0) { return $null }
+
+    $best = $scored | Sort-Object Score -Descending | Select-Object -First 1
+    Write-Host "[usb] Auto-selected: $($best.BusId)  $($best.Device)  ($($best.VidPid), score $($best.Score))"
+    return $best.BusId
+}
+
 function Invoke-UsbAttachCore {
     param(
         [string]$Distro = "Ubuntu-24.04",
         [string]$BusId = "",
-        [switch]$ListOnly,
-        [switch]$DetachAll
+        [switch]$ListOnly
     )
 
     if (-not (Get-Command usbipd -ErrorAction SilentlyContinue)) {
@@ -850,58 +1083,40 @@ function Invoke-UsbAttachCore {
 
     if ($ListOnly) { return }
 
-    if ($DetachAll) {
-        Write-Host "[usb] Detaching all attached devices..."
-        usbipd list | Select-String "Attached" | ForEach-Object {
-            if ($_ -match '(\d-\d+)') {
-                $id = $Matches[1]
-                Write-Host "  detach $id"
-                usbipd detach --busid $id 2>$null
-            }
-        }
-        return
+    if (-not $BusId -and $env:MOCKWAY_USB_BUSID) {
+        $BusId = $env:MOCKWAY_USB_BUSID.Trim()
     }
 
     if (-not $BusId) {
-        $lines = usbipd list | Out-String
-        $candidates = @(
-            'USB-CAN', 'CAN', 'CH340', 'CH341', 'CP210', 'FTDI', 'WCH', 'Serial',
-            'USB Serial', 'USB-SERIAL', 'Silicon Labs', 'Prolific'
-        )
-        foreach ($line in ($lines -split "`n")) {
-            if ($line -notmatch '^\s*(\d-\d+)\s') { continue }
-            $id = $Matches[1]
-            foreach ($kw in $candidates) {
-                if ($line -match [regex]::Escape($kw)) {
-                    $BusId = $id
-                    Write-Host "[usb] Auto-selected: $BusId  ($line)"
-                    break
-                }
-            }
-            if ($BusId) { break }
+        $BusId = Select-UsbCanBusId
+    }
+
+    if (-not $BusId) {
+        Write-Host ""
+        Write-Host "No USB-CAN auto-detected. Pick BusId from Connected list above."
+        Write-Host "Example for USB serial / CAN adapter on COM5: 5-1"
+        Write-Host "Or run: tools\setup_wsl_moveit.bat 6 5-1"
+        $manual = Read-Host "Enter BusId (blank to cancel)"
+        if ($manual -match '^\s*(\d+-\d+)\s*$') {
+            $BusId = $Matches[1]
         }
     }
 
     if (-not $BusId) {
-        Write-Host "No USB-CAN device auto-detected. Plug in adapter and run:"
-        Write-Host "  tools\setup_wsl_moveit.bat menu [6]"
-        throw "No USB-CAN device auto-detected"
+        throw "No USB-CAN device selected"
     }
 
-    Write-Host "[usb] bind $BusId ..."
-    usbipd bind --busid $BusId 2>$null
-
-    Write-Host "[usb] attach to WSL ($Distro) ..."
-    usbipd attach --wsl --busid $BusId --distribution $Distro
-
-    Start-Sleep -Seconds 2
+    Invoke-UsbipdBindSafe -BusId $BusId
+    Invoke-UsbipdAttachSafe -BusId $BusId -Distro $Distro
 
     Write-Host ""
     Write-Host "=== Serial devices in WSL ==="
-    wsl -d $Distro -- bash -lc "ls -la /dev/ttyUSB* /dev/ttyACM* 2>/dev/null || echo '(no ttyUSB/ttyACM yet)'"
+    Show-WslUsbSerialDevices -Distro $Distro
 
     Write-Host ""
-    Write-Host "Real robot CAN port in xacro is usually /dev/ttyUSB0"
+    Write-Host "Real robot CAN port in xacro is usually /dev/ttyUSB0 or /dev/ttyACM0"
+    Write-Host "If no device node: close Windows apps using COM5, re-run menu [6]"
+    Write-Host "To release COM back to Windows: menu [8] or tools\setup_wsl_moveit.bat 8"
     Write-Host "If permission denied in WSL: sudo chmod 666 /dev/ttyUSB0"
     Write-Host "Or: sudo usermod -aG dialout `$USER  (restart WSL)"
 }
@@ -909,6 +1124,84 @@ function Invoke-UsbAttachCore {
 function Invoke-UsbAttach {
     param([string]$Name)
     Invoke-UsbAttachCore -Distro $Name
+}
+
+function Invoke-UsbDetachCore {
+    param([string]$BusId = "")
+
+    if (-not (Get-Command usbipd -ErrorAction SilentlyContinue)) {
+        throw "usbipd not found. Run tools\setup_wsl_moveit.bat menu [8] as administrator"
+    }
+
+    Write-Host ""
+    Write-Host "=== USB devices (usbipd list) ==="
+    usbipd list
+    Write-Host ""
+
+    if (-not $BusId -and $env:MOCKWAY_USB_BUSID) {
+        $BusId = $env:MOCKWAY_USB_BUSID.Trim()
+    }
+
+    $targets = @()
+    if ($BusId) {
+        $targets = @($BusId)
+    } else {
+        $attached = Get-UsbipdDeviceRows | Where-Object {
+            $_.Section -eq 'Connected' -and $_.State -eq 'Attached'
+        }
+        if ($attached.Count -eq 0) {
+            Write-Warn "No Attached devices. Nothing to detach."
+            return
+        }
+        foreach ($row in $attached) {
+            Write-Host "[usb] Found Attached: $($row.BusId)  $($row.Device)"
+            $targets += $row.BusId
+        }
+        $targets = $targets | Select-Object -Unique
+    }
+
+    $doUnbind = ($env:MOCKWAY_USB_UNBIND -eq '1')
+    if (-not $doUnbind -and -not $BusId -and -not $env:MOCKWAY_USB_BUSID) {
+        $ans = Read-Host "Also unbind (release COM port to Windows)? [y/N]"
+        if ($ans -match '^[Yy]') { $doUnbind = $true }
+    }
+
+    foreach ($id in $targets) {
+        $state = Get-UsbipdDeviceState $id
+        if ($state -eq 'Attached') {
+            Write-Host "[usb] detach $id ..."
+            $r = Invoke-UsbipdCli 'detach', '--busid', $id
+            if ($r.Output) { Write-Host "  $($r.Output)" }
+            if ($r.ExitCode -ne 0 -and $r.Output -notmatch 'not attached|already detached') {
+                Write-Warn "detach $id returned exit $($r.ExitCode)"
+            }
+        } else {
+            Write-Warn "Device $id state is '$state', skip detach"
+        }
+
+        if ($doUnbind) {
+            $state = Get-UsbipdDeviceState $id
+            if ($state -match '^(Shared|Attached)$') {
+                Write-Host "[usb] unbind $id (release to Windows) ..."
+                $r = Invoke-UsbipdCli 'unbind', '--busid', $id
+                if ($r.Output) { Write-Host "  $($r.Output)" }
+                if ($r.ExitCode -ne 0 -and $r.Output -notmatch 'not shared|already unbound') {
+                    Write-Warn "unbind $id returned exit $($r.ExitCode)"
+                }
+            }
+        }
+    }
+
+    Write-Host ""
+    Write-Host "=== USB devices after detach ==="
+    usbipd list
+    Write-Host ""
+    Write-Ok "Done. Windows COM port should be available if unbind was selected."
+    Write-Host "Re-attach to WSL: tools\setup_wsl_moveit.bat 6 [BusId]"
+}
+
+function Invoke-UsbDetach {
+    Invoke-UsbDetachCore
 }
 
 if ($Mode -eq 'fix_hypervisor') {
@@ -944,6 +1237,27 @@ if ($Mode -eq 'usb') {
         $d = Get-WslDistroName $Distro
         if (-not $d) { throw "No WSL distro found. Run full install first (menu [1])." }
         Invoke-UsbAttachCore -Distro $d
+        Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
+        exit 0
+    } catch {
+        Write-Host ""
+        Write-Host "[mockway] ERROR: $($_.Exception.Message)" -ForegroundColor Red
+        if ($_.ScriptStackTrace) {
+            Write-Host $_.ScriptStackTrace -ForegroundColor DarkGray
+        }
+        Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
+        exit 1
+    }
+}
+
+if ($Mode -eq 'usb_detach') {
+    try {
+        Require-Admin
+        Write-Host ""
+        Write-Host "============================================================"
+        Write-Host " Detach USB from WSL (return to Windows)"
+        Write-Host "============================================================"
+        Invoke-UsbDetach
         Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
         exit 0
     } catch {

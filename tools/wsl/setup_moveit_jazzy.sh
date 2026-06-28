@@ -7,6 +7,11 @@ ROS_DISTRO="jazzy"
 WS_DIR="${MOCKWAY_WS_DIR:-$HOME/mockway_ws}"
 REPO_WSL="${MOCKWAY_REPO_WSL:-}"
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ -z "$REPO_WSL" ]]; then
+    REPO_WSL="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
 
 log() { echo "[mockway-wsl] $*"; }
 die() { echo "[mockway-wsl][错误] $*" >&2; exit 1; }
@@ -25,24 +30,19 @@ ensure_sudo_access() {
         if getent passwd test >/dev/null 2>&1; then
             die "检测到 root 运行，但 test 用户已存在。请用 test 安装:
   wsl -u test -- env MOCKWAY_REPO_WSL='$REPO_WSL' bash '$SCRIPT_PATH'
-或在 Windows 运行: tools\\setup_wsl_moveit.bat 选 [2]"
+或在 Linux 运行: ./tools/setup_moveit_ubuntu.sh 选 [2]"
         fi
         log "警告: 以 root 运行，工作空间: ${WS_DIR}"
         return 0
     fi
-    if sudo -n true 2>/dev/null; then
+    if sudo -v 2>/dev/null; then
         return 0
     fi
-    die "用户 $(id -un) 需要免密 sudo。请运行 tools\\setup_wsl_moveit.bat 选 [2]，或在 root 下执行:
-  echo 'test ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/99-mockway-test && chmod 440 /etc/sudoers.d/99-mockway-test"
+    die "用户 $(id -un) 需要 sudo 权限。"
 }
 
-if [[ -z "$REPO_WSL" ]]; then
-    die "未设置 MOCKWAY_REPO_WSL。请由 Windows 安装脚本传入仓库 WSL 路径。"
-fi
-
-if [[ ! -d "$REPO_WSL/moveit_mockway_config" ]]; then
-    die "仓库路径无效: $REPO_WSL"
+if [[ -z "$REPO_WSL" ]] || [[ ! -d "$REPO_WSL/moveit_mockway_config" ]]; then
+    die "仓库路径无效: ${REPO_WSL:-未设置} (需要 moveit_mockway_config 目录)"
 fi
 
 ensure_sudo_access
@@ -66,7 +66,8 @@ as_root apt-get install -y \
     curl gnupg lsb-release \
     build-essential git wget \
     python3-pip \
-    liblua5.4-dev
+    liblua5.4-dev \
+    usbutils
 
 if [[ ! -f /etc/apt/sources.list.d/ros2.list ]]; then
     log "添加 ROS2 ${ROS_DISTRO} apt 源 ..."
@@ -99,7 +100,9 @@ as_root apt-get install -y \
     "ros-${ROS_DISTRO}-xacro" \
     "ros-${ROS_DISTRO}-joint-state-publisher-gui" \
     "ros-${ROS_DISTRO}-robot-state-publisher" \
-    "ros-${ROS_DISTRO}-controller-manager"
+    "ros-${ROS_DISTRO}-controller-manager" \
+    "ros-${ROS_DISTRO}-ros2-control" \
+    "ros-${ROS_DISTRO}-ros2-controllers"
 
 if ! rosdep --version >/dev/null 2>&1; then
     die "rosdep 未安装，请检查 apt 安装步骤"
@@ -160,9 +163,9 @@ source "/opt/ros/${ROS_DISTRO}/setup.bash"
 rosdep install --from-paths src/mockway_robotics/moveit_mockway_config \
     --ignore-src -r -y || log "rosdep 部分包警告（可忽略未解析项）"
 
-log "colcon 编译 mockway_description + moveit_mockway_config ..."
+log "colcon 编译 mockway_description + dmmotor_hardware_interface + moveit_mockway_config ..."
 if ! colcon build --symlink-install \
-    --packages-select mockway_description moveit_mockway_config; then
+    --packages-select mockway_description dmmotor_hardware_interface moveit_mockway_config; then
     die "colcon 编译失败，请查看上方错误输出"
 fi
 
@@ -193,5 +196,7 @@ log "安装完成。"
 log "启动 MoveIt Demo:"
 log "  source ~/mockway_ws/install/setup.bash"
 log "  ros2 launch moveit_mockway_config demo.launch.py"
-log "或在 Windows 运行: tools\\setup_wsl_moveit.bat 选 [3]"
+log "  (Demo 默认 use_mock_hardware:=true，无需 USB-CAN)"
+log "  接真机: ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=false"
+log "或在 Linux 运行: tools/setup_moveit_ubuntu.sh 选 [2]"
 log "=========================================="
