@@ -44,7 +44,7 @@ tools\setup_wsl_moveit.bat
 |------|------|
 | **1** | 完整安装：WSL2 + Ubuntu + MoveIt2 + usbipd（需管理员） |
 | **2** | 仅 WSL 内依赖：ROS2 Jazzy + MoveIt2 + mockway_ws |
-| **3** | 启动 MoveIt2 Demo (RViz) |
+| **3** | 启动 MoveIt2 Demo (RViz)，**默认真机 + USB-CAN**（启动前先 **[6]** 透传 USB） |
 | **4** | 打开 WSL 工作 Shell |
 | **5** | 修复 WSL 0x80370114（需管理员） |
 | **6** | USB-CAN 透传到 WSL（需管理员） |
@@ -69,18 +69,20 @@ USB 透传：`tools\setup_wsl_moveit.bat 6 5-1`
 
 **若 MoveIt Demo 报 `Waiting for data on robot_description`：**
 
-1. **Demo 仿真**请确保使用 mock 硬件（默认已开启）：
+1. **Demo 默认接真机**（`use_mock_hardware:=false`），须先编译硬件插件并挂载 USB-CAN：
+   ```bash
+   colcon build --packages-select dmmotor_hardware_interface moveit_mockway_config --symlink-install
+   tools\setup_wsl_moveit.bat 6          # Windows 管理员：USB 透传
+   ls /dev/ttyACM0                         # WSL 确认串口
+   ros2 launch moveit_mockway_config demo.launch.py
+   ```
+2. **无硬件仅仿真**时显式加 mock：
    ```bash
    ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=true
    ```
-   或双击 `tools\launch_moveit_demo.bat`
-2. **接真机**须先编译硬件插件并挂载 USB-CAN：
-   ```bash
-   colcon build --packages-select dmmotor_hardware_interface moveit_mockway_config --symlink-install
-   ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=false
-   ```
-   若日志出现 `DMMototHardwareInterface ... does not exist`，说明未编译 `dmmotor_hardware_interface`
-3. 若硬件初始化失败（如 `/dev/ttyACM0` 打不开），controller_manager 也会反复等待 `robot_description`，需先修复串口权限或改回 mock
+   或双击 `tools\launch_moveit_demo.bat` 并传入参数（见脚本说明）
+3. 若日志出现 `DMMototHardwareInterface ... does not exist`，说明未编译 `dmmotor_hardware_interface`
+4. 若硬件初始化失败（如 `/dev/ttyACM0` 打不开），controller_manager 也会反复等待 `robot_description`，需先修复串口权限或改回 mock
 
 **若提示 `Ubuntu-24.04 not found`：**
 

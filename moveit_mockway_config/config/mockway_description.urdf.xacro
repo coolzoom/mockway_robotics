@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="mockway_description">
     <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
-    <xacro:arg name="use_mock_hardware" default="true" />
+    <xacro:arg name="use_mock_hardware" default="false" />
 
     <!-- Import mockway_description urdf file -->
     <xacro:include filename="$(find mockway_description)/urdf/mockway_description.urdf" />

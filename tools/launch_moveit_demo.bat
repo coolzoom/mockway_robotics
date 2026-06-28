@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 setlocal EnableDelayedExpansion
-REM 非管理员启动 MoveIt Demo — WSLg / RViz 请勿从「管理员 CMD」运行
+REM 非管理员启动 MoveIt Demo（默认真机 + USB-CAN）— WSLg / RViz 请勿从「管理员 CMD」运行
 set "TOOLS=%~dp0"
 set "WSL_DIR=%TOOLS%wsl\"
 set "DISTRO=Ubuntu-24.04"

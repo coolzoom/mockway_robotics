@@ -24,5 +24,10 @@ source "/opt/ros/${ROS_DISTRO}/setup.bash"
 source "${WS_DIR}/install/setup.bash"
 
 echo "[mockway] QT_QPA_PLATFORM=$QT_QPA_PLATFORM DISPLAY=$DISPLAY"
-echo "[mockway] 启动 MoveIt Demo (mock 硬件，无需 USB-CAN) ..."
-exec ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=true "$@"
+echo "[mockway] 启动 MoveIt Demo (真机 + USB-CAN，默认 /dev/ttyACM0) ..."
+echo "[mockway] 请先: tools\\setup_wsl_moveit.bat 6 透传 USB；无硬件仿真请加 use_mock_hardware:=true"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "${SCRIPT_DIR}/usb_serial_check.sh" ]]; then
+  bash "${SCRIPT_DIR}/usb_serial_check.sh" || true
+fi
+exec ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=false "$@"

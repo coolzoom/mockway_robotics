@@ -24,7 +24,7 @@ def generate_launch_description():
         [
             DeclareLaunchArgument(
                 "use_mock_hardware",
-                default_value="true",
+                default_value="false",
                 description="使用 mock_components/GenericSystem 替代真实硬件（dmmotor_hardware_interface/DMMototHardwareInterface）",
             ),
             OpaqueFunction(function=launch_setup),

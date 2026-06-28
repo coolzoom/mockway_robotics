@@ -86,10 +86,13 @@ colcon build --symlink-install --packages-select moveit_mockway_config
 source ~/mockway_ws/install/setup.bash
 ```
 
-5. 启动程序
+5. 启动程序（默认真机，需 USB-CAN 与 24V 供电）
 
 ```bash
+# WSL 先透传 USB: tools\setup_wsl_moveit.bat 6
 ros2 launch moveit_mockway_config demo.launch.py
+# 无硬件仿真:
+ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=true
 ```
 
 ![moveit_demo](doc/img/moveit_demo.png)

@@ -123,7 +123,7 @@ if not errorlevel 1 (
     set "RC=0"
     goto AfterAction
 )
-echo [mockway] 启动 MoveIt2 Demo (WSL: %DISTRO%, user: %WSL_USER%) ...
+echo [mockway] 启动 MoveIt2 Demo (真机 + USB-CAN，请先运行菜单 [6] 透传 USB) ...
 call :WinToWslPath "%WSL_DIR%launch_moveit_demo.sh"
 if errorlevel 1 (
     set "RC=1"
@@ -1309,7 +1309,7 @@ try {
     Write-Host "============================================================"
     Write-Host " Done"
     Write-Host "============================================================"
-    Write-Host " MoveIt demo:     tools\setup_wsl_moveit.bat menu [3]"
+    Write-Host " MoveIt demo:     tools\setup_wsl_moveit.bat menu [3]  (real robot; run [6] USB attach first)"
     Write-Host " WSL shell:       tools\setup_wsl_moveit.bat menu [4]"
     Write-Host " USB attach:      tools\setup_wsl_moveit.bat menu [6]"
     Write-Host " Manual in WSL:"

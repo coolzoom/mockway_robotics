@@ -74,9 +74,9 @@ cmd_launch_demo() {
     export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/mnt/wslg/runtime-dir}"
     export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
     export GDK_BACKEND="${GDK_BACKEND:-x11}"
-    log "启动 MoveIt2 Demo ..."
+    log "启动 MoveIt2 Demo (真机 + USB-CAN) ..."
     source_mockway_env
-    exec ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=true "$@"
+    exec ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=false "$@"
 }
 
 # ------------------------------------------------------------
