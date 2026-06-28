@@ -4,7 +4,52 @@ Ubuntu24.04(WSL2)
 
 ROS2 Jazzy
 
-## 一、环境步骤
+### Windows 一键安装（推荐）
+
+在仓库根目录双击或以管理员运行：
+
+```bat
+tools\setup_wsl_moveit.bat
+```
+
+脚本将自动：启用 WSL2、安装 Ubuntu 24.04、在 WSL 内安装 ROS2 Jazzy + MoveIt2、编译 `mockway_ws`、安装 `usbipd-win`。
+
+| 后续操作 | 命令 |
+|----------|------|
+| **仅 WSL 内装依赖**（已有 Ubuntu，无需管理员） | `tools\wsl\install_all_deps.bat` |
+| 完整安装（WSL + Ubuntu + usbipd） | `tools\setup_wsl_moveit.bat`（管理员） |
+| 启动 MoveIt Demo | `tools\wsl\launch_moveit_demo.bat` |
+| 打开 WSL 工作 shell | `tools\wsl\mockway_wsl_shell.bat` |
+| USB-CAN 透传到 WSL | `tools\wsl\attach_usb_can.bat`（管理员，需先插入适配器） |
+
+仅重装 MoveIt（已有 Ubuntu）：`powershell -ExecutionPolicy Bypass -File tools\setup_wsl_moveit.ps1 -SkipWslInstall`
+
+**若提示 `Ubuntu-24.04 not found`：**
+
+1. 再次运行 `tools\setup_wsl_moveit.bat`（已重启后不应再提示重启）
+2. 管理员 PowerShell 手动安装：`wsl --install -d Ubuntu-24.04`
+3. 按提示创建 Ubuntu 用户名和密码
+4. 再运行：`tools\setup_wsl_moveit.bat -SkipWslInstall` 或 `tools\wsl\install_all_deps.bat`
+
+**若提示 `CPU virtualization is disabled` 或错误 `0x80370114`：**
+
+1. **管理员运行修复脚本：** `tools\wsl\fix_wsl_hypervisor.bat`
+2. 打开「启用或关闭 Windows 功能」，勾选并应用后**重启**：
+   - 适用于 Linux 的 Windows 子系统
+   - 虚拟机平台
+   - Windows 虚拟机监控程序平台
+3. 重启后管理员 PowerShell 执行：
+   ```powershell
+   bcdedit /set hypervisorlaunchtype Auto
+   wsl --install -d Ubuntu-24.04
+   ```
+4. 确认 `C:\Windows\System32\vmcompute.exe` 存在；若仍缺失，在 BIOS 开启 **Intel VT-x / AMD-V**：https://aka.ms/enablevirtualization
+
+bios启动cpu虚拟化
+控制面板windows组件安装hyper-v
+---
+
+## 一、环境步骤（手动 / Linux）
 
 1. 安装Moveit2和配置助手
 

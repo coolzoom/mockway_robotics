@@ -49,16 +49,18 @@ echo  [3] 启动 实时力矩补偿 (realtime_torque_compensation)
 echo  [4] 启动 离线动力学测试 (inverse_dynamics_test)
 echo  [5] 打开 Python 工作 shell
 echo  [6] 停止 (关闭工具窗口)
+echo  [7] WSL2 MoveIt2 一键安装 (Ubuntu 24.04)
 echo  [0] 退出
 echo.
 set "MENU_CHOICE="
-set /p MENU_CHOICE=请选择 [0-6]:
+set /p MENU_CHOICE=请选择 [0-7]:
 if "%MENU_CHOICE%"=="1" goto DoSetup
 if "%MENU_CHOICE%"=="2" goto DoMotorGui
 if "%MENU_CHOICE%"=="3" goto DoTorque
 if "%MENU_CHOICE%"=="4" goto DoInverse
 if "%MENU_CHOICE%"=="5" goto DoShell
 if "%MENU_CHOICE%"=="6" goto DoStop
+if "%MENU_CHOICE%"=="7" goto DoWslMoveIt
 if "%MENU_CHOICE%"=="0" goto DoExit
 echo 无效选择，请重试。
 timeout /t 2 >nul
@@ -222,6 +224,14 @@ echo  工具窗口已关闭。
 echo.
 if /I "%~1"=="stop" exit /b 0
 pause
+goto MainMenu
+
+REM ============================================================
+REM  [7] WSL2 + MoveIt2
+REM ============================================================
+:DoWslMoveIt
+echo [启动] WSL2 Ubuntu 24.04 + MoveIt2 安装（需管理员）...
+call "%SCRIPT_DIR%setup_wsl_moveit.bat"
 goto MainMenu
 
 :DoExit
