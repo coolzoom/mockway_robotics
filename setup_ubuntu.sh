@@ -464,6 +464,38 @@ cmd_motor_gui() {
     launch_tool_in_terminal "Mockway-motor_gui" "$MOTOR_GUI_DIR" motor_gui.py
 }
 
+# 从 Windows setup_win_tools.bat 经 WSLg 直接弹出 motor_gui（无需先开 XFCE 桌面）
+cmd_motor_gui_wslg() {
+    local script_path="$MOTOR_GUI_DIR/motor_gui.py"
+    [[ -f "$script_path" ]] || die "未找到: $script_path"
+    env_ready || die "WSL 内 conda 环境未就绪。请在 WSL 运行: $0 setup  或 setup_win_tools.bat 14 后执行 ./setup_ubuntu.sh setup"
+
+    if tool_running "motor_gui.py"; then
+        warn "motor_gui 已在运行"
+        return 0
+    fi
+
+    export LANG="${LANG:-C.UTF-8}"
+    export LC_ALL="${LC_ALL:-C.UTF-8}"
+    prepare_moveit_gui_env
+    export PULSE_SERVER="${PULSE_SERVER:-unix:/mnt/wslg/PulseServer}"
+
+    if mockway_is_wsl; then
+        log "WSLg: DISPLAY=${DISPLAY} QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-}"
+    fi
+
+    activate_env
+    if ! python -c "import tkinter" 2>/dev/null; then
+        die "tkinter 不可用。请运行: sudo apt install python3-tk  或 $0 setup"
+    fi
+
+    cmd_usb_serial_check || true
+    log "启动 motor_gui (WSLg) — 关闭窗口后本终端返回"
+    echo "  提示: USB-CAN 请先在 Windows 菜单 [16] 透传"
+    cd "$MOTOR_GUI_DIR"
+    exec python motor_gui.py
+}
+
 cmd_torque() {
     launch_tool_in_terminal "Mockway-torque" "$DYNAMICS_TEST_DIR" realtime_torque_compensation.py
 }
@@ -1137,6 +1169,9 @@ moveit_cli() {
 case "${1:-}" in
     setup|install|1)              cmd_setup ;;
     motor_gui|gui|2)              cmd_motor_gui ;;
+    motor_gui-wslg|motor-gui-wslg|wsl-motor-gui|28)
+        cmd_motor_gui_wslg
+        ;;
     torque|3)                     cmd_torque ;;
     inverse|4)                    cmd_inverse ;;
     shell|start|5)                cmd_shell ;;
@@ -1176,6 +1211,7 @@ case "${1:-}" in
 Python 调试:
   setup              安装 conda 环境
   motor_gui|2        motor_gui (新终端)
+  motor_gui-wslg|28  motor_gui (WSLg 当前终端, 供 Windows 菜单调用)
   torque|3           力矩补偿
   inverse|4          离线动力学
   shell|5            Python 工作 shell
