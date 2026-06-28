@@ -60,11 +60,8 @@ if "%~1"=="16" goto DoUsbAttach
 if "%~1"=="17" goto DoSkipWslInstall
 if "%~1"=="18" goto DoUsbDetach
 if "%~1"=="19" goto DoUbuntuDesktop
-if "%~1"=="20" goto DoWslMotorGui
 if /I "%~1"=="setup" goto DoSetup
 if /I "%~1"=="motor_gui" goto DoMotorGui
-if /I "%~1"=="motor_gui-wsl" goto DoWslMotorGui
-if /I "%~1"=="wsl-motor_gui" goto DoWslMotorGui
 if /I "%~1"=="torque" goto DoTorque
 if /I "%~1"=="inverse" goto DoInverse
 if /I "%~1"=="shell" goto DoShell
@@ -102,12 +99,11 @@ echo  [16] USB-CAN 透传到 WSL  [需管理员]
 echo  [17] 跳过 WSL 安装，仅配置 MoveIt/usbipd  [需管理员]
 echo  [18] 断开 USB 透传 — COM 归还 Windows  [需管理员]
 echo  [19] 启动 Ubuntu 图形桌面 — XFCE / WSLg
-echo  [20] 启动 motor_gui — WSLg 图形界面  [需 WSL setup + USB 透传]
 echo.
 echo  [0] 退出
 echo.
 set "MENU_CHOICE="
-set /p MENU_CHOICE=请选择 [0-20]:
+set /p MENU_CHOICE=请选择 [0-19]:
 if "%MENU_CHOICE%"=="1" goto DoSetup
 if "%MENU_CHOICE%"=="2" goto DoMotorGui
 if "%MENU_CHOICE%"=="3" goto DoTorque
@@ -123,7 +119,6 @@ if "%MENU_CHOICE%"=="16" goto DoUsbAttach
 if "%MENU_CHOICE%"=="17" goto DoSkipWslInstall
 if "%MENU_CHOICE%"=="18" goto DoUsbDetach
 if "%MENU_CHOICE%"=="19" goto DoUbuntuDesktop
-if "%MENU_CHOICE%"=="20" goto DoWslMotorGui
 if "%MENU_CHOICE%"=="0" goto DoExit
 echo 无效选择，请重试。
 timeout /t 2 >nul
@@ -669,38 +664,6 @@ if defined MOCKWAY_NO_MENU (
     echo.
     echo 若任务栏出现 XFCE 面板/桌面即成功。在桌面终端中可运行 ./setup_ubuntu.sh
 )
-goto AfterAction
-
-REM ============================================================
-REM  [20] WSLg 下启动 motor_gui
-REM ============================================================
-:DoWslMotorGui
-call :ResolveDistro
-if errorlevel 1 goto AfterAction
-call :ResolveWslUser
-echo.
-net session >nul 2>&1
-if not errorlevel 1 (
-    echo [警告] 管理员 CMD 下 WSLg 图形窗口常无法显示。
-    echo 请用普通 CMD 运行: setup_win_tools.bat 20
-    echo 正在通过 explorer 以普通权限启动 ...
-    explorer.exe "%~f0" 20
-    set "RC=0"
-    goto AfterAction
-)
-echo [mockway] 在 WSLg 中启动 motor_gui — WSL: %DISTRO%, user: %WSL_USER%
-echo           请先 [16] 透传 USB-CAN；WSL 内需已运行 ./setup_ubuntu.sh setup
-call :WinToWslPath "%SCRIPT_DIR%setup_ubuntu.sh"
-if errorlevel 1 (
-    set "RC=1"
-    goto AfterAction
-)
-if /I not "%WSL_USER%"=="root" (
-    wsl -d %DISTRO% -u %WSL_USER% -- bash -lc "sed 's/\r$//' '!_WSL_PATH!' | bash -s motor_gui-wslg"
-) else (
-    wsl -d %DISTRO% -- bash -lc "sed 's/\r$//' '!_WSL_PATH!' | bash -s motor_gui-wslg"
-)
-set "RC=!ERRORLEVEL!"
 goto AfterAction
 
 REM ============================================================
