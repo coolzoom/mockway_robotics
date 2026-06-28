@@ -3,47 +3,62 @@ chcp 65001 >nul
 setlocal EnableDelayedExpansion
 
 REM ============================================================
-REM  Mockway 力矩补偿环境 - Windows 管理脚本
-REM  菜单: 1 安装环境  2 启动环境  3 停止环境
+REM  Mockway Windows 开发环境管理脚本
+REM  菜单: 安装环境 / 启动工具 / 工作 shell / 停止
 REM ============================================================
 
 set "ENV_NAME=mockway_dynamics"
-set "ENV_WINDOW_TITLE=Mockway-%ENV_NAME%"
 set "PYTHON_VER=3.10"
 set "PIP_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple"
 set "PIP_TRUSTED=pypi.tuna.tsinghua.edu.cn"
 set "MINICONDA_DIR=%USERPROFILE%\miniconda3"
 set "SCRIPT_DIR=%~dp0"
-set "REPO_ROOT=%SCRIPT_DIR%..\..\"
+set "REPO_ROOT=%SCRIPT_DIR%..\"
+set "MOTOR_GUI_DIR=%SCRIPT_DIR%motor_gui\"
+set "DYNAMICS_TEST_DIR=%SCRIPT_DIR%dynamics_test\"
+
+set "TITLE_SHELL=Mockway-Shell"
+set "TITLE_MOTOR_GUI=Mockway-motor_gui"
+set "TITLE_TORQUE=Mockway-torque"
+set "TITLE_INVERSE=Mockway-inverse"
 
 set "MINICONDA_URL_TSINGHUA=https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Windows-x86_64.exe"
 set "MINICONDA_URL_OFFICIAL=https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe"
 set "MINICONDA_INSTALLER=%TEMP%\Miniconda3-latest-Windows-x86_64.exe"
 
-REM 首次运行且无参数时进入菜单；支持 setup / start / stop 命令行参数
 if /I "%~1"=="setup" goto DoSetup
-if /I "%~1"=="start" goto DoStart
+if /I "%~1"=="motor_gui" goto DoMotorGui
+if /I "%~1"=="torque" goto DoTorque
+if /I "%~1"=="inverse" goto DoInverse
+if /I "%~1"=="shell" goto DoShell
+if /I "%~1"=="start" goto DoShell
 if /I "%~1"=="stop" goto DoStop
 
 :MainMenu
 cls
 echo.
 echo ============================================================
-echo  Mockway dynamics_test 环境管理 (Windows)
+echo  Mockway 开发环境管理 (Windows)
 echo ============================================================
 echo.
 call :ShowEnvStatus
 echo.
 echo  [1] 安装 / 更新环境 (Miniconda + Pinocchio + 依赖)
-echo  [2] 启动环境 (conda activate %ENV_NAME%)
-echo  [3] 停止环境 (conda deactivate + 关闭工作窗口)
+echo  [2] 启动 motor_gui (电机调试)
+echo  [3] 启动 实时力矩补偿 (realtime_torque_compensation)
+echo  [4] 启动 离线动力学测试 (inverse_dynamics_test)
+echo  [5] 打开 Python 工作 shell
+echo  [6] 停止 (关闭工具窗口)
 echo  [0] 退出
 echo.
 set "MENU_CHOICE="
-set /p MENU_CHOICE=请选择 [0-3]:
+set /p MENU_CHOICE=请选择 [0-6]:
 if "%MENU_CHOICE%"=="1" goto DoSetup
-if "%MENU_CHOICE%"=="2" goto DoStart
-if "%MENU_CHOICE%"=="3" goto DoStop
+if "%MENU_CHOICE%"=="2" goto DoMotorGui
+if "%MENU_CHOICE%"=="3" goto DoTorque
+if "%MENU_CHOICE%"=="4" goto DoInverse
+if "%MENU_CHOICE%"=="5" goto DoShell
+if "%MENU_CHOICE%"=="6" goto DoStop
 if "%MENU_CHOICE%"=="0" goto DoExit
 echo 无效选择，请重试。
 timeout /t 2 >nul
@@ -56,7 +71,7 @@ REM ============================================================
 cls
 echo.
 echo ============================================================
-echo  [1/1] 安装 / 更新 %ENV_NAME% 环境
+echo  安装 / 更新 %ENV_NAME% 环境
 echo ============================================================
 echo.
 
@@ -115,17 +130,11 @@ python -c "import pinocchio as pin; import numpy; import matplotlib; import seri
 if errorlevel 1 goto SetupFailed
 
 echo [8/8] 安装完成。
-set "MOCKWAY_ENV_ACTIVE=1"
 echo.
 echo ============================================================
-echo  环境 %ENV_NAME% 已就绪，当前窗口已激活该环境。
+echo  环境 %ENV_NAME% 已就绪。
+echo  返回菜单后可选 [2]~[5] 启动工具。
 echo ============================================================
-echo.
-echo  配置文件: %SCRIPT_DIR%dynamics_test.yaml
-echo  力矩补偿: python realtime_torque_compensation.py
-echo  motor_gui: cd %REPO_ROOT%tools\motor_gui ^&^& python motor_gui.py
-echo.
-echo  提示: 菜单选 [2] 可另开工作窗口；选 [3] 可停止环境。
 echo.
 pause
 goto MainMenu
@@ -137,88 +146,132 @@ pause
 goto MainMenu
 
 REM ============================================================
-REM  [2] 启动环境
+REM  [2] motor_gui
 REM ============================================================
-:DoStart
-call :FindConda
-if not defined CONDA_ACTIVATE (
-    echo [错误] 未找到 conda，请先选 [1] 安装环境。
-    pause
-    if /I not "%~1"=="start" goto MainMenu
-    exit /b 1
-)
+:DoMotorGui
+call :CheckEnvReady
+if errorlevel 1 goto MainMenu
+call :LaunchApp "%TITLE_MOTOR_GUI%" "%MOTOR_GUI_DIR%" "motor_gui.py"
+if /I "%~1"=="motor_gui" exit /b 0
+pause
+goto MainMenu
 
-call :InitCondaBase
+REM ============================================================
+REM  [3] 实时力矩补偿
+REM ============================================================
+:DoTorque
+call :CheckEnvReady
 if errorlevel 1 (
-    pause
-    if /I not "%~1"=="start" goto MainMenu
-    exit /b 1
+    if /I "%~1"=="torque" exit /b 1
+    goto MainMenu
 )
+call :LaunchApp "%TITLE_TORQUE%" "%DYNAMICS_TEST_DIR%" "realtime_torque_compensation.py"
+if /I "%~1"=="torque" exit /b 0
+pause
+goto MainMenu
 
-conda env list | findstr /I /C:"%ENV_NAME%" >nul 2>&1
+REM ============================================================
+REM  [4] 离线动力学测试
+REM ============================================================
+:DoInverse
+call :CheckEnvReady
 if errorlevel 1 (
-    echo [错误] 环境 %ENV_NAME% 不存在，请先选 [1] 安装。
-    pause
-    if /I not "%~1"=="start" goto MainMenu
-    exit /b 1
+    if /I "%~1"=="inverse" exit /b 1
+    goto MainMenu
 )
+call :LaunchApp "%TITLE_INVERSE%" "%DYNAMICS_TEST_DIR%" "inverse_dynamics_test.py"
+if /I "%~1"=="inverse" exit /b 0
+pause
+goto MainMenu
 
-echo [启动] 激活 conda 环境 %ENV_NAME% ...
-call conda activate %ENV_NAME%
+REM ============================================================
+REM  [5] Python 工作 shell
+REM ============================================================
+:DoShell
+call :CheckEnvReady
 if errorlevel 1 (
-    echo [错误] 无法激活环境。
-    pause
-    if /I not "%~1"=="start" goto MainMenu
-    exit /b 1
+    if /I "%~1"=="shell" exit /b 1
+    if /I "%~1"=="start" exit /b 1
+    goto MainMenu
 )
-set "MOCKWAY_ENV_ACTIVE=1"
 
-echo [启动] 打开独立工作窗口 ...
-start "%ENV_WINDOW_TITLE%" /D "%SCRIPT_DIR%" cmd /c open_env_shell.bat
+echo [启动] 打开 Python 工作 shell ...
+start "%TITLE_SHELL%" cmd /k "call "%CONDA_ACTIVATE%" && conda activate %ENV_NAME% && cd /d "%REPO_ROOT%" && echo. && echo Mockway %ENV_NAME% 工作 shell && echo 仓库根目录: %REPO_ROOT% && echo."
 
 echo.
-echo  环境已启动:
-echo    - 本管理窗口: conda 环境 %ENV_NAME% 已激活
-echo    - 新工作窗口: 标题 "%ENV_WINDOW_TITLE%"
+echo  工作 shell 已打开 (窗口标题: %TITLE_SHELL%)
 echo.
+if /I "%~1"=="shell" exit /b 0
 if /I "%~1"=="start" exit /b 0
 pause
 goto MainMenu
 
 REM ============================================================
-REM  [3] 停止环境
+REM  [6] 停止
 REM ============================================================
 :DoStop
-echo [停止] 正在停用环境 ...
+echo [停止] 关闭 Mockway 工具窗口 ...
 
-if defined MOCKWAY_ENV_ACTIVE (
-    call conda deactivate >nul 2>&1
-    set "MOCKWAY_ENV_ACTIVE="
-    echo        本窗口: conda deactivate 完成
-) else (
-    echo        本窗口: 当前未标记为已激活
-)
-
-REM 尝试关闭由 [2] 打开的工作窗口
-taskkill /FI "WINDOWTITLE eq %ENV_WINDOW_TITLE%*" /T /F >nul 2>&1
-if not errorlevel 1 (
-    echo        工作窗口 "%ENV_WINDOW_TITLE%" 已关闭
-) else (
-    echo        未找到运行中的工作窗口（可能已手动关闭）
-)
+call :CloseWindow "%TITLE_SHELL%"
+call :CloseWindow "%TITLE_MOTOR_GUI%"
+call :CloseWindow "%TITLE_TORQUE%"
+call :CloseWindow "%TITLE_INVERSE%"
 
 echo.
-echo  环境 %ENV_NAME% 已停止。
+echo  工具窗口已关闭。
 echo.
 if /I "%~1"=="stop" exit /b 0
 pause
 goto MainMenu
 
 :DoExit
-if defined MOCKWAY_ENV_ACTIVE (
-    echo 正在退出并停用环境 ...
-    call :DoStop
+exit /b 0
+
+REM ============================================================
+REM  子程序: 检查 conda 环境是否可用
+REM ============================================================
+:CheckEnvReady
+call :FindConda
+if not defined CONDA_ACTIVATE (
+    echo [错误] 未找到 conda，请先选 [1] 安装环境。
+    pause
+    exit /b 1
 )
+call :InitCondaBase >nul 2>&1
+conda env list | findstr /I /C:"%ENV_NAME%" >nul 2>&1
+if errorlevel 1 (
+    echo [错误] 环境 %ENV_NAME% 不存在，请先选 [1] 安装。
+    pause
+    exit /b 1
+)
+exit /b 0
+
+REM ============================================================
+REM  子程序: 在新窗口启动 Python 程序
+REM ============================================================
+:LaunchApp
+set "WIN_TITLE=%~1"
+set "WORK_DIR=%~2"
+set "PY_SCRIPT=%~3"
+
+if not exist "%WORK_DIR%%PY_SCRIPT%" (
+    echo [错误] 未找到脚本: %WORK_DIR%%PY_SCRIPT%
+    pause
+    exit /b 1
+)
+
+echo [启动] %PY_SCRIPT% ...
+start "%WIN_TITLE%" cmd /k "call "%CONDA_ACTIVATE%" && conda activate %ENV_NAME% && cd /d "%WORK_DIR%" && python %PY_SCRIPT%"
+echo        窗口标题: %WIN_TITLE%
+exit /b 0
+
+REM ============================================================
+REM  子程序: 关闭指定标题的工具窗口
+REM ============================================================
+:CloseWindow
+set "KILL_TITLE=%~1"
+taskkill /FI "WINDOWTITLE eq %KILL_TITLE%*" /T /F >nul 2>&1
+if not errorlevel 1 echo        已关闭: %KILL_TITLE%
 exit /b 0
 
 REM ============================================================
@@ -240,25 +293,33 @@ REM ============================================================
 call :FindConda
 if not defined CONDA_ACTIVATE (
     echo  状态: conda 未安装
-    exit /b 0
+    goto :ShowChildWindows
 )
 call :InitCondaBase >nul 2>&1
 conda env list | findstr /I /C:"%ENV_NAME%" >nul 2>&1
 if errorlevel 1 (
     echo  状态: conda 已安装，环境 %ENV_NAME% 未创建
 ) else (
-    if defined MOCKWAY_ENV_ACTIVE (
-        echo  状态: 环境 %ENV_NAME% 存在，本窗口【已激活】
-    ) else (
-        echo  状态: 环境 %ENV_NAME% 存在，本窗口【未激活】
-    )
+    echo  状态: 环境 %ENV_NAME% 已安装
 )
-tasklist /FI "WINDOWTITLE eq %ENV_WINDOW_TITLE%*" 2>nul | findstr /I "cmd.exe" >nul 2>&1
-if not errorlevel 1 (
-    echo  工作窗口: 【运行中】 %ENV_WINDOW_TITLE%
-) else (
-    echo  工作窗口: 【未运行】
-)
+:ShowChildWindows
+call :IsWindowRunning "%TITLE_SHELL%" SHELL_RUNNING
+call :IsWindowRunning "%TITLE_MOTOR_GUI%" GUI_RUNNING
+call :IsWindowRunning "%TITLE_TORQUE%" TORQUE_RUNNING
+call :IsWindowRunning "%TITLE_INVERSE%" INVERSE_RUNNING
+if "!SHELL_RUNNING!"=="1" echo  工作 shell: 【运行中】
+if "!GUI_RUNNING!"=="1" echo  motor_gui: 【运行中】
+if "!TORQUE_RUNNING!"=="1" echo  力矩补偿: 【运行中】
+if "!INVERSE_RUNNING!"=="1" echo  离线动力学: 【运行中】
+exit /b 0
+
+REM ============================================================
+REM  子程序: 检测窗口是否在运行
+REM ============================================================
+:IsWindowRunning
+set "%~2=0"
+tasklist /FI "WINDOWTITLE eq %~1*" 2>nul | findstr /I "cmd.exe" >nul 2>&1
+if not errorlevel 1 set "%~2=1"
 exit /b 0
 
 REM ============================================================

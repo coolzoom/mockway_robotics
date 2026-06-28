@@ -147,6 +147,11 @@ class RealtimeTorqueController:
         # Motor directions (1=forward, -1=reverse)
         self.motor_directions = np.array([m.direction for m in config.motors])
 
+        # Per-joint compensation enable flags (from yaml)
+        self.compensation_enabled = np.array(
+            [m.compensation_enabled for m in config.motors], dtype=bool
+        )
+
         # Control parameters
         self.control_rate = config.control_rate  # Hz
         self.dt = 1.0 / self.control_rate
@@ -377,8 +382,10 @@ class RealtimeTorqueController:
         # Send MIT control commands to all motors
         # Using kp=0, kd>0 for damping, and t_ff for torque command
         for i, motor in enumerate(self.motors):
-            # Convert joint torque to motor torque using direction
-            motor_torque = tau[i] * self.motor_directions[i]
+            if self.compensation_enabled[i]:
+                motor_torque = tau[i] * self.motor_directions[i]
+            else:
+                motor_torque = 0.0
 
             motor.control_mit(
                 p_des=q_motor[i],  # Current motor position (raw)
@@ -404,24 +411,24 @@ class RealtimeTorqueController:
 
                 # Compute compensation torque
                 tau = self.compute_compensation_torque(q, v, self.compensation_mode)
+                tau_cmd = np.where(self.compensation_enabled, tau, 0.0)
 
                 # Send torque command
-                self.send_torque_command(tau)
+                self.send_torque_command(tau_cmd)
 
                 # Update internal state
                 with self._state_lock:
                     self._current_q = q
                     self._previous_v = self._current_v.copy()  # Save previous velocity
                     self._current_v = v
-                    self._current_tau_cmd = tau
+                    self._current_tau_cmd = tau_cmd
 
                 # Print status periodically
                 loop_count += 1
                 if time.time() - last_print_time >= self.log_interval:
                     q_str = ', '.join([f"{qi:6.3f}" for qi in q])
                     v_str = ', '.join([f"{vi:6.3f}" for vi in v])
-                    a_str = ', '.join([f"{ai:6.3f}" for ai in self._filtered_a])
-                    tau_str = ', '.join([f"{ti:6.3f}" for ti in tau])
+                    tau_str = ', '.join([f"{ti:6.3f}" for ti in tau_cmd])
                     print(f"\r位置: [{q_str}] rad  "
                           f"速度: [{v_str}] rad/s  "
                         #   f"加速度: [{a_str}] rad/s²  "
@@ -455,6 +462,19 @@ class RealtimeTorqueController:
 
         self.compensation_mode = mode
         print(f"\n启动力矩补偿控制 (模式: {mode})")
+
+        enabled_joints = [
+            f"J{i + 1}" for i, on in enumerate(self.compensation_enabled) if on
+        ]
+        if enabled_joints:
+            print(f"补偿已开启: {', '.join(enabled_joints)}")
+            disabled_joints = [
+                f"J{i + 1}" for i, on in enumerate(self.compensation_enabled) if not on
+            ]
+            if disabled_joints:
+                print(f"补偿已关闭: {', '.join(disabled_joints)} (t_ff=0，仅 kd 阻尼)")
+        else:
+            print("警告: 所有关节补偿均为关闭，不会输出前馈力矩 (t_ff=0)")
 
         self._running = True
         self._stop_event.clear()
@@ -747,6 +767,10 @@ def interactive_mode(config=None):
                 print(f"  关节速度: {state['v']} rad/s")
                 print(f"  关节加速度: {state['a']} rad/s²")
                 print(f"  补偿力矩: {state['tau']} Nm")
+                enabled = [
+                    f"J{i + 1}" for i, on in enumerate(controller.compensation_enabled) if on
+                ]
+                print(f"  补偿开关: {', '.join(enabled) if enabled else '无（全部关闭）'}")
                 print(f"\n控制参数:")
                 print(f"  补偿模式: {controller.compensation_mode}")
                 print(f"  控制频率: {controller.control_rate} Hz")

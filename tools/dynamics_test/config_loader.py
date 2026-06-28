@@ -68,6 +68,7 @@ class MotorConfig:
     master_id: int
     description: str = ""
     direction: int = 1  # 电机旋转方向: 1=正向(与关节同向), -1=反向(与关节反向)
+    compensation_enabled: bool = False  # 是否对该关节输出补偿力矩（逐轴调试）
 
 
 @dataclass
@@ -277,7 +278,8 @@ def load_config(config_path: Optional[str] = None) -> DynamicsTestConfig:
                 motor_type=motor_type_from_string(motor_data.get('type')),
                 master_id=motor_data.get('master_id', 0),
                 description=motor_data.get('description', ''),
-                direction=motor_data.get('direction', 1)  # 默认为1(正向)
+                direction=motor_data.get('direction', 1),  # 默认为1(正向)
+                compensation_enabled=motor_data.get('compensation_enabled', False),
             )
             motors.append(motor)
 
@@ -358,6 +360,8 @@ def print_config_summary(config: DynamicsTestConfig):
         print(f"    主机ID: {motor.master_id}")
         direction_str = "正向(与关节同向)" if motor.direction == 1 else "反向(与关节反向)"
         print(f"    旋转方向: {motor.direction} ({direction_str})")
+        comp_str = "开启" if motor.compensation_enabled else "关闭"
+        print(f"    补偿开关: {comp_str}")
         if motor.description:
             print(f"    描述: {motor.description}")
     print(f"\n控制频率: {config.control_rate} Hz")
