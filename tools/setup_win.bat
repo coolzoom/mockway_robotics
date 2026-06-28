@@ -49,7 +49,7 @@ echo  [3] 启动 实时力矩补偿 (realtime_torque_compensation)
 echo  [4] 启动 离线动力学测试 (inverse_dynamics_test)
 echo  [5] 打开 Python 工作 shell
 echo  [6] 停止 (关闭工具窗口)
-echo  [7] WSL2 MoveIt2 一键安装 (Ubuntu 24.04)
+echo  [7] WSL2 / MoveIt2 工具菜单 (Ubuntu 24.04)
 echo  [0] 退出
 echo.
 set "MENU_CHOICE="

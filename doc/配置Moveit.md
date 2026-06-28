@@ -6,34 +6,36 @@ ROS2 Jazzy
 
 ### Windows 一键安装（推荐）
 
-在仓库根目录双击或以管理员运行：
+运行统一菜单（双击即可，无需记多个 bat 路径）：
 
 ```bat
 tools\setup_wsl_moveit.bat
 ```
 
-脚本将自动：启用 WSL2、安装 Ubuntu 24.04、在 WSL 内安装 ROS2 Jazzy + MoveIt2、编译 `mockway_ws`、安装 `usbipd-win`。
+| 选项 | 功能 |
+|------|------|
+| **1** | 完整安装：WSL2 + Ubuntu + MoveIt2 + usbipd（需管理员） |
+| **2** | 仅 WSL 内依赖：ROS2 Jazzy + MoveIt2 + mockway_ws |
+| **3** | 启动 MoveIt2 Demo (RViz) |
+| **4** | 打开 WSL 工作 Shell |
+| **5** | 修复 WSL 0x80370114（需管理员） |
+| **6** | USB-CAN 透传到 WSL（需管理员） |
+| **7** | 跳过 WSL 安装，仅配置 MoveIt/usbipd（需管理员） |
 
-| 后续操作 | 命令 |
-|----------|------|
-| **仅 WSL 内装依赖**（已有 Ubuntu，无需管理员） | `tools\wsl\install_all_deps.bat` |
-| 完整安装（WSL + Ubuntu + usbipd） | `tools\setup_wsl_moveit.bat`（管理员） |
-| 启动 MoveIt Demo | `tools\wsl\launch_moveit_demo.bat` |
-| 打开 WSL 工作 shell | `tools\wsl\mockway_wsl_shell.bat` |
-| USB-CAN 透传到 WSL | `tools\wsl\attach_usb_can.bat`（管理员，需先插入适配器） |
+也可命令行直达：`tools\setup_wsl_moveit.bat 2`（数字 1–7 同菜单）
 
-仅重装 MoveIt（已有 Ubuntu）：`powershell -ExecutionPolicy Bypass -File tools\setup_wsl_moveit.ps1 -SkipWslInstall`
+仅重装 MoveIt（已有 Ubuntu）：菜单 **[7]** 或 `tools\setup_wsl_moveit.bat 7`
 
 **若提示 `Ubuntu-24.04 not found`：**
 
 1. 再次运行 `tools\setup_wsl_moveit.bat`（已重启后不应再提示重启）
 2. 管理员 PowerShell 手动安装：`wsl --install -d Ubuntu-24.04`
 3. 按提示创建 Ubuntu 用户名和密码
-4. 再运行：`tools\setup_wsl_moveit.bat -SkipWslInstall` 或 `tools\wsl\install_all_deps.bat`
+4. 再运行：`tools\setup_wsl_moveit.bat` 选 **[2]** 或 **[7]**
 
 **若提示 `CPU virtualization is disabled` 或错误 `0x80370114`：**
 
-1. **管理员运行修复脚本：** `tools\wsl\fix_wsl_hypervisor.bat`
+1. **管理员运行菜单 [5]：** `tools\setup_wsl_moveit.bat 5`
 2. 打开「启用或关闭 Windows 功能」，勾选并应用后**重启**：
    - 适用于 Linux 的 Windows 子系统
    - 虚拟机平台
