@@ -69,6 +69,10 @@ class MotorConfig:
     description: str = ""
     direction: int = 1  # 电机旋转方向: 1=正向(与关节同向), -1=反向(与关节反向)
     compensation_enabled: bool = False  # 是否对该关节输出补偿力矩（逐轴调试）
+    torque_scale: float = 1.0  # 该关节补偿力矩缩放 (0~2，1=模型计算值)
+    kd: Optional[float] = None  # 已弃用：补偿关节请用纯 t_ff (kp=0,kd=0)
+    hold_kp: Optional[float] = None  # 未补偿关节位置保持 kp (None=使用全局 hold_kp)
+    hold_kd: Optional[float] = None  # 未补偿关节位置保持 kd
 
 
 @dataclass
@@ -83,6 +87,12 @@ class DynamicsTestConfig:
     compensation_mode: str
     kp: float
     kd: float
+    torque_scale: float  # 全局补偿力矩缩放
+    tau_filter_cutoff_hz: float  # 补偿力矩低通滤波 (0=关闭)
+    hold_inactive_joints: bool  # 未补偿关节锁定启动时姿态，避免前臂摆动干扰 g(q)
+    hold_kp: float  # 未补偿关节 MIT 位置保持 kp
+    hold_kd: float  # 未补偿关节 MIT 位置保持 kd
+    torque_ramp_sec: float  # 补偿力矩软启动时长 (s)，0=立即满力矩
     log_interval: float
     verbose: bool
 
@@ -151,6 +161,12 @@ def get_default_config() -> DynamicsTestConfig:
         compensation_mode="gravity",
         kp=0.0,
         kd=0.005,
+        torque_scale=1.0,
+        tau_filter_cutoff_hz=0.0,
+        hold_inactive_joints=True,
+        hold_kp=50.0,
+        hold_kd=1.0,
+        torque_ramp_sec=2.0,
         log_interval=0.5,
         verbose=False
     )
@@ -195,6 +211,21 @@ def validate_config(config: DynamicsTestConfig) -> List[str]:
 
     if config.kd < 0:
         errors.append(f"kd必须非负 (当前: {config.kd})")
+
+    if config.torque_scale <= 0 or config.torque_scale > 2.0:
+        errors.append(f"全局 torque_scale 须在 (0, 2] 内 (当前: {config.torque_scale})")
+
+    if config.tau_filter_cutoff_hz < 0:
+        errors.append(f"tau_filter_cutoff_hz 不能为负 (当前: {config.tau_filter_cutoff_hz})")
+
+    for motor in config.motors:
+        if motor.torque_scale <= 0 or motor.torque_scale > 2.0:
+            errors.append(
+                f"电机{motor.motor_id} torque_scale 须在 (0, 2] 内 "
+                f"(当前: {motor.torque_scale})"
+            )
+        if motor.kd is not None and motor.kd < 0:
+            errors.append(f"电机{motor.motor_id} kd 不能为负 (当前: {motor.kd})")
 
     # 验证CAN端口
     if not config.can_port:
@@ -269,24 +300,16 @@ def load_config(config_path: Optional[str] = None) -> DynamicsTestConfig:
         can_serial_baudrate = can_config.get('serial_baudrate', 921600)
         can_baudrate = can_config.get('can_baudrate', 1000000)
 
-        # 电机配置
-        motors_data = yaml_data.get('motors', [])
-        motors = []
-        for motor_data in motors_data:
-            motor = MotorConfig(
-                motor_id=motor_data.get('id'),
-                motor_type=motor_type_from_string(motor_data.get('type')),
-                master_id=motor_data.get('master_id', 0),
-                description=motor_data.get('description', ''),
-                direction=motor_data.get('direction', 1),  # 默认为1(正向)
-                compensation_enabled=motor_data.get('compensation_enabled', False),
-            )
-            motors.append(motor)
-
         # 控制配置
         control_config = yaml_data.get('control', {})
         control_rate = control_config.get('rate', 200)
         compensation_mode = control_config.get('compensation_mode', 'gravity')
+        global_torque_scale = control_config.get('torque_scale', 1.0)
+        tau_filter_cutoff_hz = control_config.get('tau_filter_cutoff_hz', 0.0)
+        hold_inactive_joints = control_config.get('hold_inactive_joints', True)
+        hold_kp = control_config.get('hold_kp', 50.0)
+        hold_kd = control_config.get('hold_kd', 1.0)
+        torque_ramp_sec = control_config.get('torque_ramp_sec', 2.0)
 
         # MIT参数
         mit_params = control_config.get('mit_params', {})
@@ -297,6 +320,24 @@ def load_config(config_path: Optional[str] = None) -> DynamicsTestConfig:
         logging_config = yaml_data.get('logging', {})
         log_interval = logging_config.get('print_status_interval', 0.5)
         verbose = logging_config.get('verbose', False)
+
+        # 电机配置
+        motors_data = yaml_data.get('motors', [])
+        motors = []
+        for motor_data in motors_data:
+            motor = MotorConfig(
+                motor_id=motor_data.get('id'),
+                motor_type=motor_type_from_string(motor_data.get('type')),
+                master_id=motor_data.get('master_id', 0),
+                description=motor_data.get('description', ''),
+                direction=motor_data.get('direction', 1),
+                compensation_enabled=motor_data.get('compensation_enabled', False),
+                torque_scale=motor_data.get('torque_scale', 1.0),
+                kd=motor_data.get('kd'),
+                hold_kp=motor_data.get('hold_kp'),
+                hold_kd=motor_data.get('hold_kd'),
+            )
+            motors.append(motor)
 
         # 创建配置对象
         config = DynamicsTestConfig(
@@ -309,6 +350,12 @@ def load_config(config_path: Optional[str] = None) -> DynamicsTestConfig:
             compensation_mode=compensation_mode,
             kp=kp,
             kd=kd,
+            torque_scale=global_torque_scale,
+            tau_filter_cutoff_hz=tau_filter_cutoff_hz,
+            hold_inactive_joints=hold_inactive_joints,
+            hold_kp=hold_kp,
+            hold_kd=hold_kd,
+            torque_ramp_sec=torque_ramp_sec,
             log_interval=log_interval,
             verbose=verbose
         )
@@ -362,11 +409,24 @@ def print_config_summary(config: DynamicsTestConfig):
         print(f"    旋转方向: {motor.direction} ({direction_str})")
         comp_str = "开启" if motor.compensation_enabled else "关闭"
         print(f"    补偿开关: {comp_str}")
+        if motor.compensation_enabled:
+            print(f"    补偿力度: {motor.torque_scale:.2f} × 模型力矩")
+        elif config.hold_inactive_joints:
+            hkp = motor.hold_kp if motor.hold_kp is not None else config.hold_kp
+            hkd = motor.hold_kd if motor.hold_kd is not None else config.hold_kd
+            print(f"    姿态保持: kp={hkp}, kd={hkd}")
         if motor.description:
             print(f"    描述: {motor.description}")
     print(f"\n控制频率: {config.control_rate} Hz")
     print(f"补偿模式: {config.compensation_mode}")
-    print(f"MIT参数: kp={config.kp}, kd={config.kd}")
+    print(f"全局补偿力度: {config.torque_scale:.2f} × 模型力矩")
+    if config.tau_filter_cutoff_hz > 0:
+        print(f"力矩低通滤波: {config.tau_filter_cutoff_hz} Hz")
+    if config.hold_inactive_joints:
+        print(f"未补偿关节姿态保持: kp={config.hold_kp}, kd={config.hold_kd}")
+    if config.torque_ramp_sec > 0:
+        print(f"补偿力矩软启动: {config.torque_ramp_sec:.1f} s")
+    print(f"MIT参数: kp={config.kp}, kd={config.kd} (补偿关节固定 kp=0,kd=0 纯 t_ff)")
     print(f"日志间隔: {config.log_interval} 秒")
     print(f"详细输出: {config.verbose}")
     print("="*60 + "\n")

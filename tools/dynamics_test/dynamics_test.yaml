@@ -1,5 +1,4 @@
 # Mockway Robot - Real-time Torque Compensation Configuration
-# 实时力矩补偿控制系统配置文件
 
 # CAN 通信配置
 can:
@@ -9,62 +8,70 @@ can:
   can_baudrate: 1000000       # CAN总线波特率
 
 # 电机配置列表（支持多个电机）
-# 逐轴调试重力补偿：仅将待测关节 compensation_enabled 设为 true，其余保持 false
-# 建议顺序 J6 → J5 → J4 → J1 → J2 → J3
+# 逐轴调试：同一时间只开 ONE 个 compensation_enabled: true
+# J2/J3 调试时 J1 尽量保持在零位（g(q) 依赖全臂姿态）
 motors:
   - id: 1
     type: "DM_J4310_2EC"
     master_id: 0
     direction: 1
-    compensation_enabled: false           # 补偿开关: true=输出重力补偿力矩
+    compensation_enabled: false
+    hold_kp: 50.0             # 未补偿关节：锁定启动时姿态
     description: "Joint 1 - Shoulder"
 
   - id: 2
     type: "DM4340"
     master_id: 0
-    direction: 1
+    direction: 1              # 与 ros2_control dir=1 一致
     compensation_enabled: true
+    torque_scale: 0.2
     description: "Joint 2 - Elbow"
 
   - id: 3
     type: "DM4340"
     master_id: 0
     direction: -1
-    compensation_enabled: true
+    compensation_enabled: false
+    hold_kp: 80.0
+    hold_kd: 2.0
     description: "Joint 3 - Forearm"
 
   - id: 4
     type: "DM_J4310_2EC"
     master_id: 0
     direction: 1
-    compensation_enabled: true
+    compensation_enabled: false
     description: "Joint 4 - Wrist Pitch"
 
   - id: 5
     type: "DM_J4310_2EC"
     master_id: 0
     direction: 1
-    compensation_enabled: true
+    compensation_enabled: false
     description: "Joint 5 - Wrist Roll"
 
   - id: 6
     type: "DM_J4310_2EC"
     master_id: 0
     direction: 1
-    compensation_enabled: true            # 首次调试建议从 J6 开始
+    compensation_enabled: false
     description: "Joint 6 - Wrist Yaw"
 
 # 控制参数
 control:
-  rate: 200                          # 控制频率 (Hz)
-  compensation_mode: "gravity"       # 补偿模式: "gravity", "full_dynamics", "none"
+  rate: 100                   # 降低控制频率，减轻噪声引起的振荡
+  compensation_mode: "gravity"
+  torque_scale: 1.0
+  tau_filter_cutoff_hz: 5.0   # 补偿力矩低通 (Hz)；0=关闭
+  hold_inactive_joints: true  # 未补偿关节锁定姿态，防止前臂摆动导致 g(q) 跳变
+  hold_kp: 50.0               # 4310 默认保持刚度
+  hold_kd: 1.0
+  torque_ramp_sec: 2.0        # 补偿力矩 2s 软启动
 
-  # MIT控制参数
   mit_params:
-    kp: 0.0                          # 位置增益（纯力矩控制时设为0）
-    kd: 1.0                          # 阻尼增益（首次测试建议 ≥1.0）
+    kp: 0.0
+    kd: 0.0
 
-# 日志配置
 logging:
-  print_status_interval: 0.5         # 状态打印间隔（秒）
-  verbose: false                     # 详细输出模式
+  print_status_interval: 0.5
+  verbose: false

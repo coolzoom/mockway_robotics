@@ -152,6 +152,28 @@ class RealtimeTorqueController:
             [m.compensation_enabled for m in config.motors], dtype=bool
         )
 
+        # Per-joint torque scale: effective = global × per-joint
+        self.torque_scales = np.array([
+            config.torque_scale * m.torque_scale for m in config.motors
+        ])
+
+        # Per-joint MIT kd (legacy, compensation joints use kp=0 kd=0)
+        self.kd_values = np.array([
+            config.kd if m.kd is None else m.kd for m in config.motors
+        ])
+
+        # Inactive joint position hold (lock pose at control start)
+        self.hold_inactive_joints = config.hold_inactive_joints
+        self.hold_kp_values = np.array([
+            config.hold_kp if m.hold_kp is None else m.hold_kp for m in config.motors
+        ])
+        self.hold_kd_values = np.array([
+            config.hold_kd if m.hold_kd is None else m.hold_kd for m in config.motors
+        ])
+        self._hold_positions_motor = None  # raw motor positions captured at start
+        self._control_start_time = None
+        self.torque_ramp_sec = config.torque_ramp_sec
+
         # Control parameters
         self.control_rate = config.control_rate  # Hz
         self.dt = 1.0 / self.control_rate
@@ -161,7 +183,15 @@ class RealtimeTorqueController:
 
         # MIT control parameters
         self.kp = config.kp  # Position gain (set to 0 for pure torque control)
-        self.kd = config.kd  # Damping gain
+        self.kd = config.kd  # Default damping (per-joint see kd_values)
+
+        # Torque command low-pass filter (reduce oscillation from noisy q / multi-joint coupling)
+        self.tau_filter_cutoff_hz = config.tau_filter_cutoff_hz
+        if self.tau_filter_cutoff_hz > 0:
+            self._tau_filter_alpha = self._compute_filter_alpha(self.tau_filter_cutoff_hz)
+        else:
+            self._tau_filter_alpha = 1.0
+        self._tau_filtered = np.zeros(self.num_motors)
 
         # Logging parameters
         self.log_interval = config.log_interval
@@ -374,26 +404,42 @@ class RealtimeTorqueController:
         for motor in self.motors:
             states.append(motor.get_state())
 
-        # Extract raw motor positions
-        q_motor = np.zeros(self.num_motors)
-        for i, state in enumerate(states):
-            q_motor[i] = state.position  # Raw motor position (not converted)
+        # Torque ramp: 0 -> 1 over torque_ramp_sec after control start
+        ramp = 1.0
+        if self.torque_ramp_sec > 0 and self._control_start_time is not None:
+            elapsed = time.time() - self._control_start_time
+            ramp = min(1.0, elapsed / self.torque_ramp_sec)
 
         # Send MIT control commands to all motors
-        # Using kp=0, kd>0 for damping, and t_ff for torque command
         for i, motor in enumerate(self.motors):
+            state = states[i]
             if self.compensation_enabled[i]:
-                motor_torque = tau[i] * self.motor_directions[i]
+                # Pure feedforward torque (same as motor_gui torque mode)
+                motor_torque = tau[i] * self.motor_directions[i] * ramp
+                motor.control_mit(
+                    p_des=state.position,
+                    v_des=0.0,
+                    kp=0.0,
+                    kd=0.0,
+                    t_ff=motor_torque,
+                )
+            elif self.hold_inactive_joints and self._hold_positions_motor is not None:
+                # Lock inactive joints at pose captured at start (p_des must be fixed)
+                motor.control_mit(
+                    p_des=self._hold_positions_motor[i],
+                    v_des=0.0,
+                    kp=self.hold_kp_values[i],
+                    kd=self.hold_kd_values[i],
+                    t_ff=0.0,
+                )
             else:
-                motor_torque = 0.0
-
-            motor.control_mit(
-                p_des=q_motor[i],  # Current motor position (raw)
-                v_des=0.0,         # Zero desired velocity
-                kp=self.kp,
-                kd=self.kd,
-                t_ff=motor_torque  # Motor torque
-            )
+                motor.control_mit(
+                    p_des=state.position,
+                    v_des=0.0,
+                    kp=0.0,
+                    kd=0.0,
+                    t_ff=0.0,
+                )
 
     def _control_loop(self):
         """Main control loop running at specified rate"""
@@ -411,7 +457,17 @@ class RealtimeTorqueController:
 
                 # Compute compensation torque
                 tau = self.compute_compensation_torque(q, v, self.compensation_mode)
-                tau_cmd = np.where(self.compensation_enabled, tau, 0.0)
+                tau_cmd = np.where(self.compensation_enabled, tau * self.torque_scales, 0.0)
+
+                # Low-pass filter compensation torque
+                if self.tau_filter_cutoff_hz > 0:
+                    self._tau_filtered = (
+                        self._tau_filter_alpha * tau_cmd
+                        + (1.0 - self._tau_filter_alpha) * self._tau_filtered
+                    )
+                    tau_cmd = np.where(
+                        self.compensation_enabled, self._tau_filtered, 0.0
+                    )
 
                 # Send torque command
                 self.send_torque_command(tau_cmd)
@@ -467,15 +523,36 @@ class RealtimeTorqueController:
             f"J{i + 1}" for i, on in enumerate(self.compensation_enabled) if on
         ]
         if enabled_joints:
-            print(f"补偿已开启: {', '.join(enabled_joints)}")
+            print(f"补偿已开启: {', '.join(enabled_joints)} (纯 t_ff, kp=0, kd=0)")
             disabled_joints = [
                 f"J{i + 1}" for i, on in enumerate(self.compensation_enabled) if not on
             ]
             if disabled_joints:
-                print(f"补偿已关闭: {', '.join(disabled_joints)} (t_ff=0，仅 kd 阻尼)")
+                if self.hold_inactive_joints:
+                    print(
+                        f"补偿已关闭: {', '.join(disabled_joints)} "
+                        f"(锁定启动时姿态, kp/kd 保持)"
+                    )
+                else:
+                    print(f"补偿已关闭: {', '.join(disabled_joints)} (自由, t_ff=0)")
         else:
             print("警告: 所有关节补偿均为关闭，不会输出前馈力矩 (t_ff=0)")
 
+        # Capture hold positions before loop (arm must be still)
+        if self.hold_inactive_joints:
+            hold = np.zeros(self.num_motors)
+            for i, motor in enumerate(self.motors):
+                hold[i] = motor.get_state().position
+            self._hold_positions_motor = hold
+            print("已锁定未补偿关节姿态 — 启动后请勿推动 J1/J3~J6")
+        else:
+            self._hold_positions_motor = None
+
+        self._control_start_time = time.time()
+        if self.torque_ramp_sec > 0:
+            print(f"补偿力矩将在 {self.torque_ramp_sec:.1f} s 内渐增至满幅")
+
+        self._tau_filtered = np.zeros(self.num_motors)
         self._running = True
         self._stop_event.clear()
         self._control_thread = threading.Thread(target=self._control_loop, daemon=True)
