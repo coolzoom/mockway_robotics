@@ -129,15 +129,11 @@ def generate_launch_description():
         executable="spawner",
         arguments=[
             "joint_state_broadcaster",
-            "--controller-manager-timeout", "300",
-            "--controller-manager", "/controller_manager",
+            "mockway_group_controller",
+            "--controller-manager-timeout",
+            "300",
         ],
-    )
-
-    mockway_group_controller_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=["mockway_group_controller", "-c", "/controller_manager"],
+        output="screen",
     )
 
     # Servo as component container (better latency via intraprocess communication)
@@ -191,7 +187,6 @@ def generate_launch_description():
             rviz_node,
             ros2_control_node,
             joint_state_broadcaster_spawner,
-            mockway_group_controller_spawner,
             servo_node,
             container,
         ]
