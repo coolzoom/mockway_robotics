@@ -69,7 +69,9 @@ class MotorConfig:
     description: str = ""
     direction: int = 1  # 电机旋转方向: 1=正向(与关节同向), -1=反向(与关节反向)
     compensation_enabled: bool = False  # 是否对该关节输出补偿力矩（逐轴调试）
-    torque_scale: float = 1.0  # 该关节补偿力矩缩放 (0~2，1=模型计算值)
+    torque_scale: float = 1.0  # 两种模式未单独指定时的关节倍率 fallback
+    gravity_torque_scale: Optional[float] = None  # 纯重力 g(q) 关节倍率
+    full_dynamics_torque_scale: Optional[float] = None  # 完整动力学 M*a+C+g 关节倍率
     kd: Optional[float] = None  # 已弃用：补偿关节请用纯 t_ff (kp=0,kd=0)
     hold_kp: Optional[float] = None  # 未补偿关节位置保持 kp (None=使用全局 hold_kp)
     hold_kd: Optional[float] = None  # 未补偿关节位置保持 kd
@@ -87,7 +89,9 @@ class DynamicsTestConfig:
     compensation_mode: str
     kp: float
     kd: float
-    torque_scale: float  # 全局补偿力矩缩放
+    torque_scale: float  # 全局 fallback（未指定模式专用倍率时使用）
+    gravity_torque_scale: Optional[float]  # 纯重力 g(q) 全局倍率
+    full_dynamics_torque_scale: Optional[float]  # 完整动力学全局倍率
     tau_filter_cutoff_hz: float  # 补偿力矩低通滤波 (0=关闭)
     hold_inactive_joints: bool  # 未补偿关节锁定启动时姿态，避免前臂摆动干扰 g(q)
     hold_kp: float  # 未补偿关节 MIT 位置保持 kp
@@ -117,6 +121,61 @@ def motor_type_from_string(type_str: str) -> MotorType:
             f"可用的电机型号: {available_types}"
         )
     return MOTOR_TYPE_MAP[type_str]
+
+
+def _check_torque_scale_range(value: float, label: str) -> Optional[str]:
+    """验证力矩倍率在 (0, 2] 内，返回错误消息或 None"""
+    if value <= 0 or value > 2.0:
+        return f"{label} 须在 (0, 2] 内 (当前: {value})"
+    return None
+
+
+def effective_global_gravity_scale(config: DynamicsTestConfig) -> float:
+    """纯重力模式有效全局倍率"""
+    if config.gravity_torque_scale is not None:
+        return config.gravity_torque_scale
+    return config.torque_scale
+
+
+def effective_global_full_dynamics_scale(config: DynamicsTestConfig) -> float:
+    """完整动力学模式有效全局倍率"""
+    if config.full_dynamics_torque_scale is not None:
+        return config.full_dynamics_torque_scale
+    return config.torque_scale
+
+
+def effective_motor_gravity_scale(motor: MotorConfig) -> float:
+    """纯重力模式有效关节倍率"""
+    if motor.gravity_torque_scale is not None:
+        return motor.gravity_torque_scale
+    return motor.torque_scale
+
+
+def effective_motor_full_dynamics_scale(motor: MotorConfig) -> float:
+    """完整动力学模式有效关节倍率"""
+    if motor.full_dynamics_torque_scale is not None:
+        return motor.full_dynamics_torque_scale
+    return motor.torque_scale
+
+
+def build_mode_torque_scale_arrays(config: DynamicsTestConfig):
+    """
+    构建各模式下的有效力矩倍率数组（全局 × 关节）
+
+    Returns:
+        (gravity_scales, full_dynamics_scales) 各为 length=num_motors 的 ndarray
+    """
+    import numpy as np
+
+    g_global = effective_global_gravity_scale(config)
+    f_global = effective_global_full_dynamics_scale(config)
+    gravity = np.array([
+        g_global * effective_motor_gravity_scale(m) for m in config.motors
+    ])
+    full = np.array([
+        f_global * effective_motor_full_dynamics_scale(m) for m in config.motors
+    ])
+    return gravity, full
 
 
 def get_default_config() -> DynamicsTestConfig:
@@ -162,6 +221,8 @@ def get_default_config() -> DynamicsTestConfig:
         kp=0.0,
         kd=0.005,
         torque_scale=1.0,
+        gravity_torque_scale=None,
+        full_dynamics_torque_scale=None,
         tau_filter_cutoff_hz=0.0,
         hold_inactive_joints=True,
         hold_kp=50.0,
@@ -215,15 +276,30 @@ def validate_config(config: DynamicsTestConfig) -> List[str]:
     if config.torque_scale <= 0 or config.torque_scale > 2.0:
         errors.append(f"全局 torque_scale 须在 (0, 2] 内 (当前: {config.torque_scale})")
 
+    for label, val in (
+        ("全局 gravity_torque_scale", config.gravity_torque_scale),
+        ("全局 full_dynamics_torque_scale", config.full_dynamics_torque_scale),
+    ):
+        if val is not None:
+            err = _check_torque_scale_range(val, label)
+            if err:
+                errors.append(err)
+
     if config.tau_filter_cutoff_hz < 0:
         errors.append(f"tau_filter_cutoff_hz 不能为负 (当前: {config.tau_filter_cutoff_hz})")
 
     for motor in config.motors:
-        if motor.torque_scale <= 0 or motor.torque_scale > 2.0:
-            errors.append(
-                f"电机{motor.motor_id} torque_scale 须在 (0, 2] 内 "
-                f"(当前: {motor.torque_scale})"
-            )
+        err = _check_torque_scale_range(motor.torque_scale, f"电机{motor.motor_id} torque_scale")
+        if err:
+            errors.append(err)
+        for label, val in (
+            (f"电机{motor.motor_id} gravity_torque_scale", motor.gravity_torque_scale),
+            (f"电机{motor.motor_id} full_dynamics_torque_scale", motor.full_dynamics_torque_scale),
+        ):
+            if val is not None:
+                err = _check_torque_scale_range(val, label)
+                if err:
+                    errors.append(err)
         if motor.kd is not None and motor.kd < 0:
             errors.append(f"电机{motor.motor_id} kd 不能为负 (当前: {motor.kd})")
 
@@ -305,6 +381,8 @@ def load_config(config_path: Optional[str] = None) -> DynamicsTestConfig:
         control_rate = control_config.get('rate', 200)
         compensation_mode = control_config.get('compensation_mode', 'gravity')
         global_torque_scale = control_config.get('torque_scale', 1.0)
+        gravity_torque_scale = control_config.get('gravity_torque_scale')
+        full_dynamics_torque_scale = control_config.get('full_dynamics_torque_scale')
         tau_filter_cutoff_hz = control_config.get('tau_filter_cutoff_hz', 0.0)
         hold_inactive_joints = control_config.get('hold_inactive_joints', True)
         hold_kp = control_config.get('hold_kp', 50.0)
@@ -333,6 +411,8 @@ def load_config(config_path: Optional[str] = None) -> DynamicsTestConfig:
                 direction=motor_data.get('direction', 1),
                 compensation_enabled=motor_data.get('compensation_enabled', False),
                 torque_scale=motor_data.get('torque_scale', 1.0),
+                gravity_torque_scale=motor_data.get('gravity_torque_scale'),
+                full_dynamics_torque_scale=motor_data.get('full_dynamics_torque_scale'),
                 kd=motor_data.get('kd'),
                 hold_kp=motor_data.get('hold_kp'),
                 hold_kd=motor_data.get('hold_kd'),
@@ -351,6 +431,8 @@ def load_config(config_path: Optional[str] = None) -> DynamicsTestConfig:
             kp=kp,
             kd=kd,
             torque_scale=global_torque_scale,
+            gravity_torque_scale=gravity_torque_scale,
+            full_dynamics_torque_scale=full_dynamics_torque_scale,
             tau_filter_cutoff_hz=tau_filter_cutoff_hz,
             hold_inactive_joints=hold_inactive_joints,
             hold_kp=hold_kp,
@@ -410,7 +492,13 @@ def print_config_summary(config: DynamicsTestConfig):
         comp_str = "开启" if motor.compensation_enabled else "关闭"
         print(f"    补偿开关: {comp_str}")
         if motor.compensation_enabled:
-            print(f"    补偿力度: {motor.torque_scale:.2f} × 模型力矩")
+            g_eff = effective_global_gravity_scale(config) * effective_motor_gravity_scale(motor)
+            f_eff = (
+                effective_global_full_dynamics_scale(config)
+                * effective_motor_full_dynamics_scale(motor)
+            )
+            print(f"    重力补偿倍率: {g_eff:.2f} × g(q)")
+            print(f"    完整动力学倍率: {f_eff:.2f} × (M*a+C+g)")
         elif config.hold_inactive_joints:
             hkp = motor.hold_kp if motor.hold_kp is not None else config.hold_kp
             hkd = motor.hold_kd if motor.hold_kd is not None else config.hold_kd
@@ -419,7 +507,11 @@ def print_config_summary(config: DynamicsTestConfig):
             print(f"    描述: {motor.description}")
     print(f"\n控制频率: {config.control_rate} Hz")
     print(f"补偿模式: {config.compensation_mode}")
-    print(f"全局补偿力度: {config.torque_scale:.2f} × 模型力矩")
+    print(f"全局 fallback 倍率: {config.torque_scale:.2f}")
+    g_g = effective_global_gravity_scale(config)
+    f_g = effective_global_full_dynamics_scale(config)
+    print(f"纯重力全局倍率: {g_g:.2f} × g(q)")
+    print(f"完整动力学全局倍率: {f_g:.2f} × (M*a+C+g)")
     if config.tau_filter_cutoff_hz > 0:
         print(f"力矩低通滤波: {config.tau_filter_cutoff_hz} Hz")
     if config.hold_inactive_joints:

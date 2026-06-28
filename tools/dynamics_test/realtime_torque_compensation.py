@@ -29,7 +29,7 @@ from dm_motor_driver import create_can_adapter, DMMotor, MotorType, MotorState
 # Import configuration loader
 from config_loader import (
     load_config, DynamicsTestConfig, get_default_config, print_config_summary,
-    can_adapter_display_name,
+    can_adapter_display_name, build_mode_torque_scale_arrays,
 )
 
 # Default configuration file path
@@ -152,10 +152,10 @@ class RealtimeTorqueController:
             [m.compensation_enabled for m in config.motors], dtype=bool
         )
 
-        # Per-joint torque scale: effective = global × per-joint
-        self.torque_scales = np.array([
-            config.torque_scale * m.torque_scale for m in config.motors
-        ])
+        # Per-joint torque scale by compensation mode (global × per-joint)
+        self.gravity_torque_scales, self.full_dynamics_torque_scales = (
+            build_mode_torque_scale_arrays(config)
+        )
 
         # Per-joint MIT kd (legacy, compensation joints use kp=0 kd=0)
         self.kd_values = np.array([
@@ -231,6 +231,12 @@ class RealtimeTorqueController:
         rc = 1.0 / (2.0 * np.pi * cutoff_freq)
         alpha = self.dt / (rc + self.dt)
         return alpha
+
+    def get_active_torque_scales(self):
+        """Return per-joint scale array for current compensation mode."""
+        if self.compensation_mode == "full_dynamics":
+            return self.full_dynamics_torque_scales
+        return self.gravity_torque_scales
 
     def _apply_lowpass_filter(self, new_value, filtered_value, alpha):
         """
@@ -457,7 +463,8 @@ class RealtimeTorqueController:
 
                 # Compute compensation torque
                 tau = self.compute_compensation_torque(q, v, self.compensation_mode)
-                tau_cmd = np.where(self.compensation_enabled, tau * self.torque_scales, 0.0)
+                scales = self.get_active_torque_scales()
+                tau_cmd = np.where(self.compensation_enabled, tau * scales, 0.0)
 
                 # Low-pass filter compensation torque
                 if self.tau_filter_cutoff_hz > 0:
@@ -551,6 +558,14 @@ class RealtimeTorqueController:
         self._control_start_time = time.time()
         if self.torque_ramp_sec > 0:
             print(f"补偿力矩将在 {self.torque_ramp_sec:.1f} s 内渐增至满幅")
+
+        active_scales = self.get_active_torque_scales()
+        scale_label = (
+            "完整动力学倍率" if mode == "full_dynamics" else "重力补偿倍率"
+        )
+        for i, on in enumerate(self.compensation_enabled):
+            if on:
+                print(f"  J{i + 1} {scale_label}: {active_scales[i]:.2f} × 模型力矩")
 
         self._tau_filtered = np.zeros(self.num_motors)
         self._running = True

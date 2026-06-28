@@ -24,7 +24,8 @@ motors:
     master_id: 0
     direction: 1              # 与 ros2_control dir=1 一致
     compensation_enabled: true
-    torque_scale: 0.2
+    gravity_torque_scale: 1.2       # 纯重力 g(q)：悬停支撑（motor_gui 标定）
+    full_dynamics_torque_scale: 0.4 # 完整 M*a+C+g：拖动示教，抑制抖动
     description: "Joint 2 - Elbow"
 
   - id: 3
@@ -61,7 +62,9 @@ motors:
 control:
   rate: 100                   # 降低控制频率，减轻噪声引起的振荡
   compensation_mode: "gravity"
-  torque_scale: 1.0
+  torque_scale: 1.0           # 未单独指定模式倍率时的全局 fallback
+  gravity_torque_scale: 1.0   # 纯重力 g(q) 全局倍率
+  full_dynamics_torque_scale: 0.35  # 完整动力学全局倍率（拖动示教宜偏小）
   tau_filter_cutoff_hz: 5.0   # 补偿力矩低通 (Hz)；0=关闭
   hold_inactive_joints: true  # 未补偿关节锁定姿态，防止前臂摆动导致 g(q) 跳变
   hold_kp: 50.0               # 4310 默认保持刚度
