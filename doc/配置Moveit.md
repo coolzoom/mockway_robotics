@@ -50,8 +50,10 @@ tools\setup_wsl_moveit.bat
 | **6** | USB-CAN 透传到 WSL（需管理员） |
 | **7** | 跳过 WSL 安装，仅配置 MoveIt/usbipd（需管理员） |
 | **8** | 断开 USB 透传，COM 口归还 Windows（需管理员） |
+| **9** | 重新编译 mockway_ws（colcon，改 C++/xacro/ros2_controllers 后） |
 
-也可命令行直达：`tools\setup_wsl_moveit.bat 2`（数字 1–8 同菜单）
+也可命令行直达：`tools\setup_wsl_moveit.bat 2`（数字 1–9 同菜单）  
+仅编译：`tools\setup_wsl_moveit.bat 9` 或 `tools\setup_wsl_moveit.bat rebuild`
 
 USB 透传：`tools\setup_wsl_moveit.bat 6 5-1`  
 断开透传：`tools\setup_wsl_moveit.bat 8 5-1 unbind`（`unbind` 可选，完全释放 COM 给 Windows）
@@ -65,15 +67,17 @@ USB 透传：`tools\setup_wsl_moveit.bat 6 5-1`
 3. 或在 WSL 终端：`bash tools/wsl/launch_moveit_demo.sh`
 4. 仍失败时可试：`export LIBGL_ALWAYS_SOFTWARE=1` 后再启动（软件渲染，较慢）
 5. 任务栏有图标但空白：Alt+Tab 选中后按 **Win+Shift+←/→** 移到当前屏幕；或删除 WSL 内 `~/.rviz2` 后重试
-6. 重新编译以更新窗口配置：`colcon build --packages-select moveit_mockway_config --symlink-install`
+6. 重新编译：`tools\setup_wsl_moveit.bat 9`（或 WSL 内 `./tools/setup_moveit_ubuntu.sh rebuild`）
 
 **若 MoveIt Demo 报 `Waiting for data on robot_description`：**
 
 1. **Demo 默认接真机**（`use_mock_hardware:=false`），须先编译硬件插件并挂载 USB-CAN：
+   ```bat
+   tools\setup_wsl_moveit.bat 9
+   tools\setup_wsl_moveit.bat 6
+   ```
    ```bash
-   colcon build --packages-select dmmotor_hardware_interface moveit_mockway_config --symlink-install
-   tools\setup_wsl_moveit.bat 6          # Windows 管理员：USB 透传
-   ls /dev/ttyACM0                         # WSL 确认串口
+   ls /dev/ttyACM0
    ros2 launch moveit_mockway_config demo.launch.py
    ```
 2. **无硬件仅仿真**时显式加 mock：

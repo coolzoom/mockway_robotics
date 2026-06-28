@@ -12,6 +12,10 @@ set "WSL_USER=test"
 title Mockway WSL2 / MoveIt2
 
 if /I "%~1"=="admin" goto AdminRunner
+if /I "%~1"=="rebuild" (
+    set "MENU_CHOICE=9"
+    goto Dispatch
+)
 if not "%~1"=="" (
     set "MENU_CHOICE=%~1"
     goto Dispatch
@@ -40,10 +44,11 @@ echo  [5] 修复 WSL 0x80370114 (Hypervisor / vmcompute)  ^[需管理员^]
 echo  [6] USB-CAN 透传到 WSL  ^[需管理员^]
 echo  [7] 跳过 WSL 安装，仅配置 MoveIt/usbipd  ^[需管理员^]
 echo  [8] 断开 USB 透传 (COM 归还 Windows)  ^[需管理员^]
+echo  [9] 重新编译 mockway_ws (colcon)  ^[改 C++/配置后^]
 echo  [0] 退出
 echo.
 set "MENU_CHOICE="
-set /p MENU_CHOICE=请选择 [0-8]:
+set /p MENU_CHOICE=请选择 [0-9]:
 if "%MENU_CHOICE%"=="1" goto DoFullInstall
 if "%MENU_CHOICE%"=="2" goto DoInstallDeps
 if "%MENU_CHOICE%"=="3" goto DoLaunchDemo
@@ -52,6 +57,7 @@ if "%MENU_CHOICE%"=="5" goto DoFixHypervisor
 if "%MENU_CHOICE%"=="6" goto DoUsbAttach
 if "%MENU_CHOICE%"=="7" goto DoSkipWslInstall
 if "%MENU_CHOICE%"=="8" goto DoUsbDetach
+if "%MENU_CHOICE%"=="9" goto DoRebuildWs
 if "%MENU_CHOICE%"=="0" exit /b 0
 echo 无效选择，请重试。
 timeout /t 2 >nul
@@ -66,6 +72,7 @@ if "%MENU_CHOICE%"=="5" goto DoFixHypervisor
 if "%MENU_CHOICE%"=="6" goto DoUsbAttach
 if "%MENU_CHOICE%"=="7" goto DoSkipWslInstall
 if "%MENU_CHOICE%"=="8" goto DoUsbDetach
+if "%MENU_CHOICE%"=="9" goto DoRebuildWs
 echo [错误] 无效选项: %MENU_CHOICE%
 exit /b 1
 
@@ -100,6 +107,30 @@ if "!RC!"=="0" (
     echo [完成] 依赖已安装。菜单选 [3] 启动 MoveIt Demo。
 ) else (
     echo [错误] 安装失败，退出码 !RC!
+)
+goto AfterAction
+
+REM ============================================================
+REM  [9] 重新编译 mockway_ws
+REM ============================================================
+:DoRebuildWs
+call :ResolveDistro
+if errorlevel 1 goto AfterAction
+call :ResolveWslUser
+echo.
+echo ============================================================
+echo  colcon 编译 mockway_description + dmmotor_hardware_interface
+echo            + moveit_mockway_config
+echo  发行版: %DISTRO%    用户: %WSL_USER%
+echo ============================================================
+echo.
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $OutputEncoding=[Text.Encoding]::UTF8; $repo=(Resolve-Path '%REPO_ROOT%').Path; if($repo -match '^([A-Za-z]):\\(.*)$'){ $wsl='/mnt/'+$matches[1].ToLower()+'/'+$matches[2].Replace('\','/') } else { throw 'bad repo path' }; $sh=$wsl+'/tools/setup_moveit_ubuntu.sh'; wsl -d %DISTRO% -u %WSL_USER% -- env ('MOCKWAY_REPO_WSL='+$wsl) LANG=C.UTF-8 LC_ALL=C.UTF-8 bash $sh rebuild; exit $LASTEXITCODE"
+set "RC=!ERRORLEVEL!"
+if "!RC!"=="0" (
+    echo [完成] 编译成功。可运行菜单 [3] 或 tools\launch_moveit_demo.bat 启动 Demo。
+) else (
+    echo [错误] 编译失败，退出码 !RC!  ^(若未装 ROS，请先选 [2]^)
 )
 goto AfterAction
 
@@ -1310,6 +1341,7 @@ try {
     Write-Host " Done"
     Write-Host "============================================================"
     Write-Host " MoveIt demo:     tools\setup_wsl_moveit.bat menu [3]  (real robot; run [6] USB attach first)"
+    Write-Host " Rebuild ws:      tools\setup_wsl_moveit.bat menu [9]  (after C++/xacro changes)"
     Write-Host " WSL shell:       tools\setup_wsl_moveit.bat menu [4]"
     Write-Host " USB attach:      tools\setup_wsl_moveit.bat menu [6]"
     Write-Host " Manual in WSL:"

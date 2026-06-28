@@ -1,0 +1,9 @@
+moveit WSL的ubuntu版本只有在运行完整的wsl安装程序后才能启动图形界面，否则卡死在启动界面。不知道为什么
+先使用setup_wsl_moveit安装所有环境，然后在用launch_moveit_demo启动即可
+
+每次启动moveit后，1轴非常快速的剧烈移动一下
+
+目前步骤
+1， 管理员启动setup_wsl_moveit选1全新安装
+2， 重新挂载USB CAN
+3，普通用户启动launch_moveit_demo
