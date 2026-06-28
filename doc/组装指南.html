@@ -163,6 +163,37 @@
       font-size: 0.9rem;
       line-height: 1.5;
     }
+    .joint-dir-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+      margin: 1.25rem 0;
+    }
+    .joint-dir-grid figure {
+      margin: 0;
+      background: #fafbfd;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.75rem;
+      overflow: hidden;
+    }
+    .joint-dir-grid img {
+      width: 100%;
+      height: auto;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .joint-dir-grid figcaption {
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-top: 0.6rem;
+      line-height: 1.5;
+    }
+    @media (min-width: 900px) {
+      .joint-dir-grid.two-col {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
     footer {
       text-align: center;
       color: var(--muted);
@@ -228,7 +259,7 @@
     </tbody>
   </table>
   <div class="alert alert-info">
-    <strong>关节角正负约定：</strong>沿 URDF 定义的关节轴正方向朝外观察，<strong>逆时针</strong>旋转为关节角增大（rad <strong>+</strong>），<strong>顺时针</strong>旋转为关节角减小（rad <strong>−</strong>）。电机编码器读数的正负取决于物理安装方向，未必与关节正方向一致，须通过 <code>direction</code> / <code>dir</code> 参数映射；详见下文 <a href="#joint-direction">关节旋转方向</a>。
+    <strong>关节角正负约定：</strong>沿 URDF 定义的关节轴正方向朝外观察，<strong>逆时针</strong>旋转为关节角增大（rad <strong>+</strong>），<strong>顺时针</strong>为减小（rad <strong>−</strong>）。实物标定图见 <a href="#joint-direction">关节旋转方向</a>。
   </div>
   <div class="alert alert-info">
     <strong>代码分析结论：</strong>本仓库 <em>不包含</em> 通过 CAN 修改电机 ID 的程序接口。电机 ID 必须在组装前，使用达妙官方<strong>调试助手</strong>逐台写入并保存到驱动器 Flash。仓库中的 <code>motor_gui</code> 与 <code>dmmotor_hardware_interface</code> 仅<strong>使用</strong>已配置好的 ID 进行通信与控制。
@@ -718,6 +749,39 @@ print('J2 (index 1):', g[1])
     <li>沿该关节 URDF 定义的<strong>轴正方向朝外</strong>观察（右手系）：<strong>逆时针</strong>转动 → <code>q</code> 增大（rad <strong>+</strong>）；<strong>顺时针</strong>转动 → <code>q</code> 减小（rad <strong>−</strong>）。</li>
     <li>达妙电机反馈的原始位置 <code>θ<sub>motor</sub></code> 正负由<strong>转子实际安装方向</strong>决定，与关节正方向不一定相同。</li>
   </ul>
+
+  <div class="alert alert-info">
+    <strong>实物标定图：</strong>下方三张图在仓库 <code>doc/img/</code> 中保存，由脚本根据实物照片自动生成，标注各关节默认 <code>dir</code> 与 CCW 正方向，便于对照 <code>motor_gui</code> 正转验证。
+  </div>
+
+  <div class="joint-dir-grid">
+    <figure>
+      <img src="img/joint_direction_overview.png" alt="Mockway 实物关节方向总览">
+      <figcaption>
+        <strong>图 1 — 整臂实物标定总览</strong>（基于 <code>cover.jpg</code>）。蓝十字为关节旋转轴示意位置；<strong>绿弧</strong>表示沿轴向外看时的 <strong>CCW = q+</strong>。标签中 <code>dir=±1</code> 为本仓库默认 <code>direction</code> / <code>dir</code>；<strong>J3 为唯一默认 −1</strong>。
+      </figcaption>
+    </figure>
+    <div class="joint-dir-grid two-col">
+      <figure>
+        <img src="img/joint_direction_ccw_guide.png" alt="沿轴向外看 CCW 为正">
+        <figcaption>
+          <strong>图 2 — 单关节 CCW 正方向</strong>（基于 <code>calibrate_joint.jpg</code>）。适用于任意关节：沿轴正方向朝外看，逆时针为 rad+。
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="img/joint_direction_schematic.png" alt="侧视简图与 direction 标定步骤">
+        <figcaption>
+          <strong>图 3 — 侧视简图 + 标定步骤</strong>。汇总 J1～J6 默认 <code>dir</code>，以及 <code>motor_gui</code> 正转时如何判断 <code>direction</code>。
+        </figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <p>重新生成标注图（修改关节位置或更换照片后）：</p>
+  <pre>pip install pillow
+python doc/tools/generate_joint_direction_images.py</pre>
+  <p>源图：<code>doc/img/cover.jpg</code>、<code>doc/img/calibrate_joint.jpg</code>；输出：<code>joint_direction_overview.png</code>、<code>joint_direction_ccw_guide.png</code>、<code>joint_direction_schematic.png</code>。</p>
+
   <p>软件中用 <code>direction</code>（<code>dynamics_test.yaml</code>）或 <code>dir</code>（<code>ros2_control.xacro</code>）把电机读数换算为关节角：</p>
   <pre>q_joint = direction × θ_motor
 
