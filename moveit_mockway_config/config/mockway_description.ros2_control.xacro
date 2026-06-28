@@ -16,6 +16,7 @@
                     <param name="can_type">usb_can</param>
                     <param name="can_interface">/dev/ttyACM0</param>
                     <param name="serial_baudrate">921600</param>
+                    <param name="usb_can_adapter">damiao</param>
                 </xacro:unless>
             </hardware>
             <!-- Joint 1: DM-J4310-2EC -->

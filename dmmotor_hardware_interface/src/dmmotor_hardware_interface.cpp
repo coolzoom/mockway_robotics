@@ -5,6 +5,10 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include <thread>
+#include <algorithm>
+#include <sstream>
+#include <iomanip>
 
 #include "hardware_interface/handle.hpp"
 #include "hardware_interface/hardware_info.hpp"
@@ -32,7 +36,14 @@ namespace dmmotor_hardware_interface
 enum CanType
 {
   SOCKET_CAN,   // Linux SocketCAN
-  USB_CAN       // 维特USB-CAN适配器
+  USB_CAN       // USB-CAN 适配器（达妙 / 维特）
+};
+
+enum UsbCanAdapter
+{
+  USB_CAN_DAMIAO,     // 达妙官方 USB-CAN（0x55 0xAA 帧）
+  USB_CAN_WITMOTION,  // 维特 USB-CAN（AT 指令）
+  USB_CAN_AUTO        // 打开串口后自动检测
 };
 
 class DMMototHardwareInterface : public hardware_interface::SystemInterface
@@ -117,6 +128,7 @@ private:
 
   // CAN通信相关
   CanType can_type_{SOCKET_CAN};  // CAN接口类型，默认SocketCAN
+  UsbCanAdapter usb_can_adapter_{USB_CAN_DAMIAO};
   int can_socket_;                // SocketCAN socket文件描述符
   int serial_fd_{-1};             // USB-CAN串口文件描述符
   int serial_baudrate_{921600};   // USB-CAN串口波特率
@@ -155,8 +167,16 @@ private:
   void close_usb_can_serial();
   bool send_usb_can_frame(uint32_t can_id, const uint8_t* data, size_t len);
   bool receive_usb_can_frame(struct can_frame& frame);
+  bool send_damiao_usb_can_frame(uint32_t can_id, const uint8_t* data, size_t len);
+  bool receive_damiao_usb_can_frame(struct can_frame& frame);
+  bool send_witmotion_usb_can_frame(uint32_t can_id, const uint8_t* data, size_t len);
+  bool receive_witmotion_usb_can_frame(struct can_frame& frame);
   void process_usb_can_rx_buffer();
   bool enter_usb_can_at_mode();
+  bool detect_usb_can_adapter();
+  void log_usb_can_rx_preview(const char* context);
+  std::string hex_dump_buffer(size_t max_bytes = 48) const;
+  bool read_initial_motor_position(DamiaoMotor& motor);
 };
 
 hardware_interface::CallbackReturn DMMototHardwareInterface::on_init(
@@ -192,6 +212,26 @@ hardware_interface::CallbackReturn DMMototHardwareInterface::on_init(
   auto baudrate_it = info_.hardware_parameters.find("serial_baudrate");
   if (baudrate_it != info_.hardware_parameters.end()) {
     serial_baudrate_ = std::stoi(baudrate_it->second);
+  }
+
+  // USB-CAN 适配器类型：damiao（默认）| witmotion | auto
+  if (can_type_ == USB_CAN) {
+    auto adapter_it = info_.hardware_parameters.find("usb_can_adapter");
+    if (adapter_it != info_.hardware_parameters.end()) {
+      const std::string& adapter = adapter_it->second;
+      if (adapter == "witmotion" || adapter == "WITMOTION" || adapter == "wit") {
+        usb_can_adapter_ = USB_CAN_WITMOTION;
+      } else if (adapter == "auto" || adapter == "AUTO") {
+        usb_can_adapter_ = USB_CAN_AUTO;
+      } else {
+        usb_can_adapter_ = USB_CAN_DAMIAO;
+      }
+    }
+    const char* adapter_name =
+      (usb_can_adapter_ == USB_CAN_WITMOTION) ? "witmotion" :
+      (usb_can_adapter_ == USB_CAN_AUTO) ? "auto" : "damiao";
+    RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"),
+                "USB-CAN adapter protocol: %s", adapter_name);
   }
   
   // 初始化电机列表
@@ -283,32 +323,18 @@ hardware_interface::CallbackReturn DMMototHardwareInterface::on_configure(
   // 读取非仿真关节的当前位置，避免电机启动时跳动
   for (auto& motor : motors_) {
     if (!motor.is_simulated) {
-      if (reset_motor(motor.can_id)) {
-        // 等待并接收反馈
-        struct can_frame frame;
-        // 使用阻塞模式读取，最多等待2000ms
-        auto start_time = std::chrono::steady_clock::now();
-        bool success = false;
-        while (std::chrono::steady_clock::now() - start_time < std::chrono::milliseconds(2000)) {
-          if (receive_can_frame(frame) && parse_motor_feedback(frame, motor)) {
-            // 将当前位置赋值给命令位置，避免启动时跳动
-            motor.cmd_position = motor.position;
-            RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"), 
-                        "Motor 0x%03X initial position: %.3f", motor.can_id, motor.position);
-            success = true;
-            break;
-          }
-          // 短暂延时避免过度占用CPU
-          std::this_thread::sleep_for(std::chrono::microseconds(50));
+      if (!read_initial_motor_position(motor)) {
+        if (can_type_ == USB_CAN) {
+          log_usb_can_rx_preview("initial position read failed");
+          RCLCPP_ERROR(rclcpp::get_logger("DMMototHardwareInterface"),
+                       "USB-CAN hint: 达妙适配器请设 usb_can_adapter=damiao；"
+                       "维特适配器请设 witmotion；确认 /dev/ttyACM0 已 usbipd 透传且 motor_gui 未占用端口");
         }
-        if (!success) {
-          RCLCPP_ERROR(rclcpp::get_logger("DMMototHardwareInterface"), 
-                       "Failed to read initial position for motor 0x%03X", motor.can_id);
-          return hardware_interface::CallbackReturn::ERROR;
-        }
+        RCLCPP_ERROR(rclcpp::get_logger("DMMototHardwareInterface"),
+                     "Failed to read initial position for motor 0x%03X", motor.can_id);
+        return hardware_interface::CallbackReturn::ERROR;
       }
     } else {
-      // 仿真电机使用默认值
       motor.cmd_position = motor.position;
     }
   }
@@ -557,11 +583,23 @@ bool DMMototHardwareInterface::init_usb_can_serial()
               "USB-CAN serial port opened: %s at %d baud",
               can_interface_.c_str(), serial_baudrate_);
 
-  // 进入AT指令模式
-  if (!enter_usb_can_at_mode())
-  {
-    RCLCPP_WARN(rclcpp::get_logger("DMMototHardwareInterface"),
-                "Failed to enter AT mode, continuing anyway...");
+  if (usb_can_adapter_ == USB_CAN_AUTO) {
+    if (!detect_usb_can_adapter()) {
+      RCLCPP_WARN(rclcpp::get_logger("DMMototHardwareInterface"),
+                  "Auto-detect inconclusive, defaulting to Damiao USB-CAN protocol");
+      usb_can_adapter_ = USB_CAN_DAMIAO;
+    }
+  }
+
+  if (usb_can_adapter_ == USB_CAN_WITMOTION) {
+    if (!enter_usb_can_at_mode()) {
+      RCLCPP_WARN(rclcpp::get_logger("DMMototHardwareInterface"),
+                  "Failed to enter WitMotion AT mode, continuing anyway...");
+    }
+  } else {
+    RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"),
+                "Using Damiao USB-CAN binary protocol (0x55 0xAA)");
+    log_usb_can_rx_preview("after open");
   }
 
   return true;
@@ -600,6 +638,14 @@ bool DMMototHardwareInterface::enter_usb_can_at_mode()
 
 bool DMMototHardwareInterface::send_usb_can_frame(uint32_t can_id, const uint8_t* data, size_t len)
 {
+  if (usb_can_adapter_ == USB_CAN_WITMOTION) {
+    return send_witmotion_usb_can_frame(can_id, data, len);
+  }
+  return send_damiao_usb_can_frame(can_id, data, len);
+}
+
+bool DMMototHardwareInterface::send_witmotion_usb_can_frame(uint32_t can_id, const uint8_t* data, size_t len)
+{
   if (serial_fd_ < 0 || len > 8) return false;
 
   // 构建AT指令帧
@@ -633,6 +679,43 @@ bool DMMototHardwareInterface::send_usb_can_frame(uint32_t can_id, const uint8_t
 
   ssize_t written = ::write(serial_fd_, frame, frame_len);
   return written == static_cast<ssize_t>(frame_len);
+}
+
+bool DMMototHardwareInterface::send_damiao_usb_can_frame(uint32_t can_id, const uint8_t* data, size_t len)
+{
+  if (serial_fd_ < 0 || len > 8) return false;
+
+  uint8_t frame[30];
+  size_t idx = 0;
+  frame[idx++] = 0x55;
+  frame[idx++] = 0xAA;
+  frame[idx++] = 0x1E;
+  frame[idx++] = 0x03;
+  frame[idx++] = 0x01;
+  frame[idx++] = 0x00;
+  frame[idx++] = 0x00;
+  frame[idx++] = 0x00;
+  frame[idx++] = 0x0A;
+  frame[idx++] = 0x00;
+  frame[idx++] = 0x00;
+  frame[idx++] = 0x00;
+  frame[idx++] = 0x00;
+  const uint32_t fid = can_id & 0x7FF;
+  frame[idx++] = static_cast<uint8_t>(fid & 0xFF);
+  frame[idx++] = static_cast<uint8_t>((fid >> 8) & 0xFF);
+  frame[idx++] = static_cast<uint8_t>((fid >> 16) & 0xFF);
+  frame[idx++] = static_cast<uint8_t>((fid >> 24) & 0xFF);
+  frame[idx++] = 0x00;
+  frame[idx++] = 0x08;
+  frame[idx++] = 0x00;
+  frame[idx++] = 0x00;
+  for (size_t i = 0; i < 8; ++i) {
+    frame[idx++] = (i < len) ? data[i] : 0x00;
+  }
+  frame[idx++] = 0x00;
+
+  ssize_t written = ::write(serial_fd_, frame, idx);
+  return written == static_cast<ssize_t>(idx);
 }
 
 void DMMototHardwareInterface::process_usb_can_rx_buffer()
@@ -693,6 +776,62 @@ void DMMototHardwareInterface::process_usb_can_rx_buffer()
 }
 
 bool DMMototHardwareInterface::receive_usb_can_frame(struct can_frame& frame)
+{
+  if (usb_can_adapter_ == USB_CAN_WITMOTION) {
+    return receive_witmotion_usb_can_frame(frame);
+  }
+  return receive_damiao_usb_can_frame(frame);
+}
+
+bool DMMototHardwareInterface::receive_damiao_usb_can_frame(struct can_frame& frame)
+{
+  if (serial_fd_ < 0) return false;
+
+  uint8_t buffer[64];
+  ssize_t bytes_read = ::read(serial_fd_, buffer, sizeof(buffer));
+  if (bytes_read > 0) {
+    usb_can_rx_buffer_.insert(usb_can_rx_buffer_.end(), buffer, buffer + bytes_read);
+  }
+
+  constexpr size_t kRxFrameSize = 16;
+  while (usb_can_rx_buffer_.size() >= kRxFrameSize) {
+    auto it = std::find(usb_can_rx_buffer_.begin(), usb_can_rx_buffer_.end(), static_cast<uint8_t>(0xAA));
+    if (it == usb_can_rx_buffer_.end()) {
+      usb_can_rx_buffer_.clear();
+      return false;
+    }
+    if (it != usb_can_rx_buffer_.begin()) {
+      usb_can_rx_buffer_.erase(usb_can_rx_buffer_.begin(), it);
+    }
+    if (usb_can_rx_buffer_.size() < kRxFrameSize) {
+      return false;
+    }
+
+    const uint8_t* raw = usb_can_rx_buffer_.data();
+    if (raw[0] != 0xAA || raw[kRxFrameSize - 1] != 0x55 || raw[1] != 0x11) {
+      usb_can_rx_buffer_.erase(usb_can_rx_buffer_.begin());
+      continue;
+    }
+
+    const uint32_t can_id = static_cast<uint32_t>(raw[3]) |
+                            (static_cast<uint32_t>(raw[4]) << 8) |
+                            (static_cast<uint32_t>(raw[5]) << 16) |
+                            (static_cast<uint32_t>(raw[6]) << 24);
+    frame.can_id = can_id & 0x7FF;
+    frame.can_dlc = 8;
+    for (uint8_t i = 0; i < 8; ++i) {
+      frame.data[i] = raw[7 + i];
+    }
+
+    usb_can_rx_buffer_.erase(usb_can_rx_buffer_.begin(),
+                             usb_can_rx_buffer_.begin() + kRxFrameSize);
+    return true;
+  }
+
+  return false;
+}
+
+bool DMMototHardwareInterface::receive_witmotion_usb_can_frame(struct can_frame& frame)
 {
   if (serial_fd_ < 0) return false;
 
@@ -779,6 +918,118 @@ bool DMMototHardwareInterface::receive_usb_can_frame(struct can_frame& frame)
     return true;
   }
 
+  return false;
+}
+
+std::string DMMototHardwareInterface::hex_dump_buffer(size_t max_bytes) const
+{
+  std::ostringstream oss;
+  const size_t n = std::min(usb_can_rx_buffer_.size(), max_bytes);
+  for (size_t i = 0; i < n; ++i) {
+    oss << std::hex << std::setw(2) << std::setfill('0')
+        << static_cast<int>(usb_can_rx_buffer_[i]) << ' ';
+  }
+  if (usb_can_rx_buffer_.size() > max_bytes) {
+    oss << "...";
+  }
+  return oss.str();
+}
+
+void DMMototHardwareInterface::log_usb_can_rx_preview(const char* context)
+{
+  uint8_t buffer[64];
+  for (int i = 0; i < 10; ++i) {
+    ssize_t bytes_read = ::read(serial_fd_, buffer, sizeof(buffer));
+    if (bytes_read > 0) {
+      usb_can_rx_buffer_.insert(usb_can_rx_buffer_.end(), buffer, buffer + bytes_read);
+    }
+    if (!usb_can_rx_buffer_.empty()) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+
+  const char* adapter =
+    (usb_can_adapter_ == USB_CAN_WITMOTION) ? "witmotion" : "damiao";
+  RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"),
+              "USB-CAN [%s] %s: rx_bytes=%zu preview=%s",
+              context, adapter, usb_can_rx_buffer_.size(),
+              hex_dump_buffer().c_str());
+
+  if (usb_can_rx_buffer_.size() >= 2) {
+    if (usb_can_rx_buffer_[0] == 0x55 && usb_can_rx_buffer_[1] == 0xAA) {
+      RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"),
+                  "Serial preview matches Damiao USB-CAN (55 AA ...)");
+    } else if (usb_can_rx_buffer_[0] == 'A' && usb_can_rx_buffer_[1] == 'T') {
+      RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"),
+                  "Serial preview matches WitMotion AT protocol");
+    }
+  }
+}
+
+bool DMMototHardwareInterface::detect_usb_can_adapter()
+{
+  usb_can_rx_buffer_.clear();
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  uint8_t buffer[128];
+  ssize_t bytes_read = ::read(serial_fd_, buffer, sizeof(buffer));
+  if (bytes_read > 0) {
+    usb_can_rx_buffer_.insert(usb_can_rx_buffer_.end(), buffer, buffer + bytes_read);
+  }
+
+  log_usb_can_rx_preview("auto-detect");
+
+  for (size_t i = 0; i + 1 < usb_can_rx_buffer_.size(); ++i) {
+    if (usb_can_rx_buffer_[i] == 0x55 && usb_can_rx_buffer_[i + 1] == 0xAA) {
+      usb_can_adapter_ = USB_CAN_DAMIAO;
+      RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"),
+                  "Auto-detected Damiao USB-CAN protocol");
+      usb_can_rx_buffer_.clear();
+      return true;
+    }
+    if (usb_can_rx_buffer_[i] == 'A' && usb_can_rx_buffer_[i + 1] == 'T') {
+      usb_can_adapter_ = USB_CAN_WITMOTION;
+      RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"),
+                  "Auto-detected WitMotion USB-CAN protocol");
+      usb_can_rx_buffer_.clear();
+      return true;
+    }
+  }
+
+  usb_can_rx_buffer_.clear();
+  return false;
+}
+
+bool DMMototHardwareInterface::read_initial_motor_position(DamiaoMotor& motor)
+{
+  if (!reset_motor(motor.can_id)) {
+    RCLCPP_ERROR(rclcpp::get_logger("DMMototHardwareInterface"),
+                 "Failed to send clear-error to motor 0x%03X", motor.can_id);
+    return false;
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+  enable_motor(motor.can_id);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  struct can_frame frame;
+  auto start_time = std::chrono::steady_clock::now();
+  while (std::chrono::steady_clock::now() - start_time < std::chrono::milliseconds(5000)) {
+    DamiaoMotor keepalive = motor;
+    keepalive.cmd_position = 0.0;
+    keepalive.cmd_velocity = 0.0;
+    keepalive.cmd_effort = 0.0;
+    send_mit_command(keepalive);
+
+    if (receive_can_frame(frame) && parse_motor_feedback(frame, motor)) {
+      motor.cmd_position = motor.position;
+      RCLCPP_INFO(rclcpp::get_logger("DMMototHardwareInterface"),
+                  "Motor 0x%03X initial position: %.3f rad", motor.can_id, motor.position);
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
   return false;
 }
 
