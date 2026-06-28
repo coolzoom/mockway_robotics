@@ -9,60 +9,64 @@ ROS2 Jazzy
 运行统一菜单（双击即可，无需记多个 bat 路径）：
 
 ```bat
-tools\setup_wsl_moveit.bat
+setup_win_tools.bat
 ```
+
+上半部分 **[1–6]** 为 Windows Python 调试；下半部分 **[11–19]** 为 WSL2 / MoveIt2。
 
 ### Ubuntu 原生安装（物理机 / 虚拟机 / 双系统）
 
 在 Ubuntu 24.04 终端中：
 
 ```bash
-chmod +x tools/setup_moveit_ubuntu.sh
-./tools/setup_moveit_ubuntu.sh
+chmod +x setup_ubuntu.sh
+./setup_ubuntu.sh
 ```
 
 | 选项 | 功能 |
 |------|------|
-| **1** | 完整安装：ROS2 Jazzy + MoveIt2 + mockway_ws（需 sudo） |
-| **2** | 启动 MoveIt2 Demo (RViz) |
-| **3** | 打开工作 Shell |
-| **4** | USB-CAN 串口检测与 dialout 权限 |
-| **5** | 仅重新编译工作空间 |
-| **6** | 环境与诊断信息 |
+| **1** | 安装 conda 调试环境 (Miniconda + Pinocchio) |
+| **10–11** | 安装 / 启动 XFCE 桌面 |
+| **20** | 完整安装：ROS2 Jazzy + MoveIt2 + mockway_ws（需 sudo） |
+| **21–23** | MoveIt + RViz（真机 / 仿真） |
+| **24–27** | Shell / USB / 编译 / 诊断 |
 
-命令行快捷方式：`./tools/setup_moveit_ubuntu.sh 2` 或 `demo` / `install` / `usb` 等
+命令行快捷方式：`./setup_ubuntu.sh moveit-demo` 或 `moveit-install` 等
 
 ---
 
-### Windows WSL 菜单对照
+### Windows WSL 菜单对照（`setup_win_tools.bat` 下半部分）
 
 ```bat
-tools\setup_wsl_moveit.bat
+setup_win_tools.bat
 ```
 
 | 选项 | 功能 |
 |------|------|
-| **1** | 完整安装：WSL2 + Ubuntu + MoveIt2 + usbipd（需管理员） |
-| **2** | 仅 WSL 内依赖：ROS2 Jazzy + MoveIt2 + mockway_ws |
-| **3** | 启动 MoveIt2 Demo (RViz)，**默认真机 + USB-CAN**（启动前先 **[6]** 透传 USB） |
-| **4** | 打开 WSL 工作 Shell |
-| **5** | 修复 WSL 0x80370114（需管理员） |
-| **6** | USB-CAN 透传到 WSL（需管理员） |
-| **7** | 跳过 WSL 安装，仅配置 MoveIt/usbipd（需管理员） |
-| **8** | 断开 USB 透传，COM 口归还 Windows（需管理员） |
+| **11** | 完整安装：WSL2 + Ubuntu + MoveIt2 + usbipd（需管理员） |
+| **12** | 仅 WSL 内依赖：ROS2 Jazzy + MoveIt2 + mockway_ws |
+| **13** | 启动 MoveIt2 Demo (RViz)，**默认真机 + USB-CAN**（启动前先 **[16]** 透传 USB） |
+| **14** | 打开 WSL 工作 Shell |
+| **15** | 修复 WSL 0x80370114（需管理员） |
+| **16** | USB-CAN 透传到 WSL（需管理员） |
+| **17** | 跳过 WSL 安装，仅配置 MoveIt/usbipd（需管理员） |
+| **18** | 断开 USB 透传，COM 口归还 Windows（需管理员） |
+| **19** | 启动 Ubuntu 图形桌面 XFCE（WSLg，普通权限） |
 
-也可命令行直达：`tools\setup_wsl_moveit.bat 2`（数字 1–8 同菜单）
+也可命令行直达：`setup_win_tools.bat 12` 或 `setup_win_tools.bat wsl 2`（`wsl 1–9` 等同旧 WSL 编号）
 
-USB 透传：`tools\setup_wsl_moveit.bat 6 5-1`  
-断开透传：`tools\setup_wsl_moveit.bat 8 5-1 unbind`（`unbind` 可选，完全释放 COM 给 Windows）
+USB 透传：`setup_win_tools.bat 16 5-1`  
+断开透传：`setup_win_tools.bat 18 5-1 unbind`（`unbind` 可选，完全释放 COM 给 Windows）
 
-仅重装 MoveIt（已有 Ubuntu）：菜单 **[7]** 或 `tools\setup_wsl_moveit.bat 7`
+仅重装 MoveIt（已有 Ubuntu）：菜单 **[17]** 或 `setup_win_tools.bat 17`
+
+**启动带桌面的 Ubuntu：** `setup_win_tools.bat desktop` 或 `setup_win_tools.bat 19`
 
 **若 RViz 窗口空白、一闪而过或报 `Invalid parentWindowHandle` / `GLXWindow`：**
 
-1. **不要从「管理员: 命令提示符」启动 [3]** — WSLg 在提权终端下常无法显示 GUI
-2. 双击运行：`tools\launch_moveit_demo.bat`（普通权限，已自动设置 `QT_QPA_PLATFORM=xcb`）
-3. 或在 WSL 终端：`bash tools/wsl/launch_moveit_demo.sh`
+1. **不要从「管理员: 命令提示符」启动 [13]** — WSLg 在提权终端下常无法显示 GUI
+2. 普通权限运行：`setup_win_tools.bat demo`（已自动设置 `QT_QPA_PLATFORM=xcb`）
+3. 或在 WSL 终端：`bash setup_ubuntu.sh moveit-demo`
 4. 仍失败时可试：`export LIBGL_ALWAYS_SOFTWARE=1` 后再启动（软件渲染，较慢）
 5. 任务栏有图标但空白：Alt+Tab 选中后按 **Win+Shift+←/→** 移到当前屏幕；或删除 WSL 内 `~/.rviz2` 后重试
 6. 重新编译以更新窗口配置：`colcon build --packages-select moveit_mockway_config --symlink-install`
@@ -72,7 +76,7 @@ USB 透传：`tools\setup_wsl_moveit.bat 6 5-1`
 1. **Demo 默认接真机**（`use_mock_hardware:=false`），须先编译硬件插件并挂载 USB-CAN：
    ```bash
    colcon build --packages-select dmmotor_hardware_interface moveit_mockway_config --symlink-install
-   tools\setup_wsl_moveit.bat 6          # Windows 管理员：USB 透传
+   setup_win_tools.bat 16          # Windows 管理员：USB 透传
    ls /dev/ttyACM0                         # WSL 确认串口
    ros2 launch moveit_mockway_config demo.launch.py
    ```
@@ -80,20 +84,20 @@ USB 透传：`tools\setup_wsl_moveit.bat 6 5-1`
    ```bash
    ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=true
    ```
-   或双击 `tools\launch_moveit_demo.bat` 并传入参数（见脚本说明）
+   或 WSL 内：`./setup_ubuntu.sh moveit-demo-mock`
 3. 若日志出现 `DMMototHardwareInterface ... does not exist`，说明未编译 `dmmotor_hardware_interface`
 4. 若硬件初始化失败（如 `/dev/ttyACM0` 打不开），controller_manager 也会反复等待 `robot_description`，需先修复串口权限或改回 mock
 
 **若提示 `Ubuntu-24.04 not found`：**
 
-1. 再次运行 `tools\setup_wsl_moveit.bat`（已重启后不应再提示重启）
+1. 再次运行 `setup_win_tools.bat`（已重启后不应再提示重启）
 2. 管理员 PowerShell 手动安装：`wsl --install -d Ubuntu-24.04`
 3. 按提示创建 Ubuntu 用户名和密码
-4. 再运行：`tools\setup_wsl_moveit.bat` 选 **[2]** 或 **[7]**
+4. 再运行：`setup_win_tools.bat` 选 **[12]** 或 **[17]**
 
 **若提示 `CPU virtualization is disabled` 或错误 `0x80370114`：**
 
-1. **管理员运行菜单 [5]：** `tools\setup_wsl_moveit.bat 5`
+1. **管理员运行菜单 [15]：** `setup_win_tools.bat 15`
 2. 打开「启用或关闭 Windows 功能」，勾选并应用后**重启**：
    - 适用于 Linux 的 Windows 子系统
    - 虚拟机平台

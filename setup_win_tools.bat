@@ -1,63 +1,133 @@
 @echo off
 chcp 65001 >nul
 setlocal EnableDelayedExpansion
-REM Mockway - WSL2 / MoveIt2 统一入口（菜单 + 命令行快捷方式）
 
-set "LOG=%TEMP%\mockway_wsl_setup.log"
+REM ============================================================
+REM  Mockway Windows + WSL 统一环境管理
+REM  Ubuntu 对应: setup_ubuntu.sh
+REM ============================================================
+
+set "ENV_NAME=mockway_dynamics"
+set "PYTHON_VER=3.10"
+set "PIP_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple"
+set "PIP_TRUSTED=pypi.tuna.tsinghua.edu.cn"
+set "MINICONDA_DIR=%USERPROFILE%\miniconda3"
 set "SCRIPT_DIR=%~dp0"
-set "WSL_DIR=%SCRIPT_DIR%wsl\"
-set "REPO_ROOT=%SCRIPT_DIR%.."
+set "REPO_ROOT=%SCRIPT_DIR%"
+set "MOTOR_GUI_DIR=%SCRIPT_DIR%tools\motor_gui\"
+set "DYNAMICS_TEST_DIR=%SCRIPT_DIR%tools\dynamics_test\"
+set "LOG=%TEMP%\mockway_wsl_setup.log"
 set "DISTRO=Ubuntu-24.04"
 set "WSL_USER=test"
-title Mockway WSL2 / MoveIt2
+
+set "TITLE_SHELL=Mockway-Shell"
+set "TITLE_MOTOR_GUI=Mockway-motor_gui"
+set "TITLE_TORQUE=Mockway-torque"
+set "TITLE_INVERSE=Mockway-inverse"
+
+set "MINICONDA_URL_TSINGHUA=https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Windows-x86_64.exe"
+set "MINICONDA_URL_OFFICIAL=https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe"
+set "MINICONDA_INSTALLER=%TEMP%\Miniconda3-latest-Windows-x86_64.exe"
+
+title Mockway Windows + WSL
 
 if /I "%~1"=="admin" goto AdminRunner
-if not "%~1"=="" (
-    set "MENU_CHOICE=%~1"
-    goto Dispatch
+if /I "%~1"=="demo" (
+    set "MOCKWAY_NO_MENU=1"
+    set "MENU_CHOICE=3"
+    goto WslDispatch
 )
+if /I "%~1"=="moveit-demo" (
+    set "MOCKWAY_NO_MENU=1"
+    set "MENU_CHOICE=3"
+    goto WslDispatch
+)
+if /I "%~1"=="desktop" (
+    set "MOCKWAY_NO_MENU=1"
+    set "MENU_CHOICE=9"
+    goto WslDispatch
+)
+if /I "%~1"=="wsl" (
+    set "MENU_CHOICE=%~2"
+    goto WslDispatch
+)
+if "%~1"=="11" goto DoFullInstall
+if "%~1"=="12" goto DoInstallDeps
+if "%~1"=="13" goto DoLaunchDemo
+if "%~1"=="14" goto DoWslShell
+if "%~1"=="15" goto DoFixHypervisor
+if "%~1"=="16" goto DoUsbAttach
+if "%~1"=="17" goto DoSkipWslInstall
+if "%~1"=="18" goto DoUsbDetach
+if "%~1"=="19" goto DoUbuntuDesktop
+if /I "%~1"=="setup" goto DoSetup
+if /I "%~1"=="motor_gui" goto DoMotorGui
+if /I "%~1"=="torque" goto DoTorque
+if /I "%~1"=="inverse" goto DoInverse
+if /I "%~1"=="shell" goto DoShell
+if /I "%~1"=="start" goto DoShell
+if /I "%~1"=="stop" goto DoStop
 goto MainMenu
 
-REM ============================================================
-REM  菜单
-REM ============================================================
 :MainMenu
 cls
 echo.
 echo ============================================================
-echo  Mockway - WSL2 / MoveIt2 工具菜单
+echo  Mockway 开发环境管理 — Windows + WSL
 echo ============================================================
-call :ResolveDistro
-call :ResolveWslUser
-echo  发行版: %DISTRO%    用户: %WSL_USER%
-echo  日志:   %LOG%
 echo.
-echo  [1] 完整安装 (WSL2 + Ubuntu + MoveIt2 + usbipd)  ^[需管理员^]
-echo  [2] 仅装 WSL 内依赖 (ROS2 Jazzy + MoveIt2 + mockway_ws)
-echo  [3] 启动 MoveIt2 Demo (RViz)
-echo  [4] 打开 WSL 工作 Shell
-echo  [5] 修复 WSL 0x80370114 (Hypervisor / vmcompute)  ^[需管理员^]
-echo  [6] USB-CAN 透传到 WSL  ^[需管理员^]
-echo  [7] 跳过 WSL 安装，仅配置 MoveIt/usbipd  ^[需管理员^]
-echo  [8] 断开 USB 透传 (COM 归还 Windows)  ^[需管理员^]
+call :ShowEnvStatus
+echo.
+echo  --- Windows Python 工具 ---
+echo  [1] 安装 / 更新环境 — Miniconda + Pinocchio + 依赖
+echo  [2] 启动 motor_gui — 电机调试
+echo  [3] 启动 实时力矩补偿 — realtime_torque_compensation
+echo  [4] 启动 离线动力学测试 — inverse_dynamics_test
+echo  [5] 打开 Python 工作 shell
+echo  [6] 停止 — 关闭工具窗口
+echo.
+echo  --- WSL2 / MoveIt2 ---
+call :ResolveDistro >nul 2>&1
+call :ResolveWslUser >nul 2>&1
+echo  发行版: %DISTRO%    用户: %WSL_USER%    日志: %LOG%
+echo  [11] 完整安装 — WSL2 + Ubuntu + MoveIt2 + usbipd  [需管理员]
+echo  [12] 仅装 WSL 内依赖 — ROS2 Jazzy + MoveIt2 + mockway_ws
+echo  [13] 启动 MoveIt2 Demo — RViz
+echo  [14] 打开 WSL 工作 Shell
+echo  [15] 修复 WSL 0x80370114 — Hypervisor / vmcompute  [需管理员]
+echo  [16] USB-CAN 透传到 WSL  [需管理员]
+echo  [17] 跳过 WSL 安装，仅配置 MoveIt/usbipd  [需管理员]
+echo  [18] 断开 USB 透传 — COM 归还 Windows  [需管理员]
+echo  [19] 启动 Ubuntu 图形桌面 — XFCE / WSLg
+echo.
 echo  [0] 退出
 echo.
 set "MENU_CHOICE="
-set /p MENU_CHOICE=请选择 [0-8]:
-if "%MENU_CHOICE%"=="1" goto DoFullInstall
-if "%MENU_CHOICE%"=="2" goto DoInstallDeps
-if "%MENU_CHOICE%"=="3" goto DoLaunchDemo
-if "%MENU_CHOICE%"=="4" goto DoWslShell
-if "%MENU_CHOICE%"=="5" goto DoFixHypervisor
-if "%MENU_CHOICE%"=="6" goto DoUsbAttach
-if "%MENU_CHOICE%"=="7" goto DoSkipWslInstall
-if "%MENU_CHOICE%"=="8" goto DoUsbDetach
-if "%MENU_CHOICE%"=="0" exit /b 0
+set /p MENU_CHOICE=请选择 [0-19]:
+if "%MENU_CHOICE%"=="1" goto DoSetup
+if "%MENU_CHOICE%"=="2" goto DoMotorGui
+if "%MENU_CHOICE%"=="3" goto DoTorque
+if "%MENU_CHOICE%"=="4" goto DoInverse
+if "%MENU_CHOICE%"=="5" goto DoShell
+if "%MENU_CHOICE%"=="6" goto DoStop
+if "%MENU_CHOICE%"=="11" goto DoFullInstall
+if "%MENU_CHOICE%"=="12" goto DoInstallDeps
+if "%MENU_CHOICE%"=="13" goto DoLaunchDemo
+if "%MENU_CHOICE%"=="14" goto DoWslShell
+if "%MENU_CHOICE%"=="15" goto DoFixHypervisor
+if "%MENU_CHOICE%"=="16" goto DoUsbAttach
+if "%MENU_CHOICE%"=="17" goto DoSkipWslInstall
+if "%MENU_CHOICE%"=="18" goto DoUsbDetach
+if "%MENU_CHOICE%"=="19" goto DoUbuntuDesktop
+if "%MENU_CHOICE%"=="0" goto DoExit
 echo 无效选择，请重试。
 timeout /t 2 >nul
 goto MainMenu
 
-:Dispatch
+:WslDispatch
+if /I "%MENU_CHOICE%"=="demo" goto DoLaunchDemo
+if /I "%MENU_CHOICE%"=="moveit-demo" goto DoLaunchDemo
+if /I "%MENU_CHOICE%"=="desktop" goto DoUbuntuDesktop
 if "%MENU_CHOICE%"=="1" goto DoFullInstall
 if "%MENU_CHOICE%"=="2" goto DoInstallDeps
 if "%MENU_CHOICE%"=="3" goto DoLaunchDemo
@@ -66,12 +136,368 @@ if "%MENU_CHOICE%"=="5" goto DoFixHypervisor
 if "%MENU_CHOICE%"=="6" goto DoUsbAttach
 if "%MENU_CHOICE%"=="7" goto DoSkipWslInstall
 if "%MENU_CHOICE%"=="8" goto DoUsbDetach
-echo [错误] 无效选项: %MENU_CHOICE%
+if "%MENU_CHOICE%"=="9" goto DoUbuntuDesktop
+echo [错误] 无效 WSL 选项: %MENU_CHOICE%
 exit /b 1
 
 REM ============================================================
-REM  [1] 完整安装
+REM  [1] 安装环境
 REM ============================================================
+:DoSetup
+cls
+echo.
+echo ============================================================
+echo  安装 / 更新 %ENV_NAME% 环境
+echo ============================================================
+echo.
+
+call :FindConda
+if not defined CONDA_ACTIVATE (
+    echo [0/8] 未检测到 Miniconda，开始自动安装 ...
+    echo        安装路径: %MINICONDA_DIR%
+    call :InstallMiniconda
+    if errorlevel 1 goto SetupFailed
+    call :FindConda
+)
+
+if not defined CONDA_ACTIVATE (
+    echo [错误] 未找到 conda，请先安装 Miniconda。
+    goto SetupFailed
+)
+
+echo [1/8] 初始化 conda ...
+call :InitCondaBase
+if errorlevel 1 goto SetupFailed
+
+echo [2/8] 配置 conda 国内镜像（清华源）...
+call :ConfigureCondaMirror
+if errorlevel 1 goto SetupFailed
+
+echo [3/8] 检查 conda 环境 "%ENV_NAME%" ...
+conda env list | findstr /I /C:"%ENV_NAME%" >nul 2>&1
+if errorlevel 1 (
+    echo        创建新环境 Python %PYTHON_VER% ...
+    call conda create -n %ENV_NAME% python=%PYTHON_VER% -y
+) else (
+    echo        环境已存在，跳过创建。
+)
+if errorlevel 1 goto SetupFailed
+
+echo [4/8] 激活环境 ...
+call conda activate %ENV_NAME%
+if errorlevel 1 goto SetupFailed
+
+echo [5/8] 安装 Pinocchio — conda-forge ...
+call conda install pinocchio -c conda-forge -y
+if errorlevel 1 (
+    echo        重试清华 conda-forge 镜像 ...
+    call conda install pinocchio -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge -y
+)
+if errorlevel 1 goto SetupFailed
+
+echo [6/8] 安装 pip 依赖 — numpy / matplotlib / pyserial / pyyaml ...
+python -m pip install --upgrade pip -i %PIP_INDEX% --trusted-host %PIP_TRUSTED%
+python -m pip install "numpy>=1.20.0" "matplotlib>=3.3.0" "pyserial>=3.5" "pyyaml>=6.0" ^
+    -i %PIP_INDEX% --trusted-host %PIP_TRUSTED%
+if errorlevel 1 goto SetupFailed
+
+echo [7/8] 验证安装 ...
+python -c "import pinocchio as pin; import numpy; import matplotlib; import serial; import yaml; print('pinocchio', pin.__version__); print('numpy', numpy.__version__); print('OK')"
+if errorlevel 1 goto SetupFailed
+
+echo [8/8] 安装完成。
+echo.
+echo ============================================================
+echo  环境 %ENV_NAME% 已就绪。
+echo  返回菜单后可选 [2]~[5] 启动工具。
+echo ============================================================
+echo.
+pause
+goto MainMenu
+
+:SetupFailed
+echo.
+echo [错误] 安装失败，请查看上方报错。
+pause
+goto MainMenu
+
+REM ============================================================
+REM  [2] motor_gui
+REM ============================================================
+:DoMotorGui
+call :CheckEnvReady
+if errorlevel 1 goto MainMenu
+call :LaunchApp "%TITLE_MOTOR_GUI%" "%MOTOR_GUI_DIR%" "motor_gui.py"
+if /I "%~1"=="motor_gui" exit /b 0
+pause
+goto MainMenu
+
+REM ============================================================
+REM  [3] 实时力矩补偿
+REM ============================================================
+:DoTorque
+call :CheckEnvReady
+if errorlevel 1 (
+    if /I "%~1"=="torque" exit /b 1
+    goto MainMenu
+)
+call :LaunchApp "%TITLE_TORQUE%" "%DYNAMICS_TEST_DIR%" "realtime_torque_compensation.py"
+if /I "%~1"=="torque" exit /b 0
+pause
+goto MainMenu
+
+REM ============================================================
+REM  [4] 离线动力学测试
+REM ============================================================
+:DoInverse
+call :CheckEnvReady
+if errorlevel 1 (
+    if /I "%~1"=="inverse" exit /b 1
+    goto MainMenu
+)
+call :LaunchApp "%TITLE_INVERSE%" "%DYNAMICS_TEST_DIR%" "inverse_dynamics_test.py"
+if /I "%~1"=="inverse" exit /b 0
+pause
+goto MainMenu
+
+REM ============================================================
+REM  [5] Python 工作 shell
+REM ============================================================
+:DoShell
+call :CheckEnvReady
+if errorlevel 1 (
+    if /I "%~1"=="shell" exit /b 1
+    if /I "%~1"=="start" exit /b 1
+    goto MainMenu
+)
+
+echo [启动] 打开 Python 工作 shell ...
+start "%TITLE_SHELL%" cmd /k "call "%CONDA_ACTIVATE%" && conda activate %ENV_NAME% && cd /d "%REPO_ROOT%" && echo. && echo Mockway %ENV_NAME% 工作 shell && echo 仓库根目录: %REPO_ROOT% && echo."
+
+echo.
+echo  工作 shell 已打开 — 窗口标题: %TITLE_SHELL%
+echo.
+if /I "%~1"=="shell" exit /b 0
+if /I "%~1"=="start" exit /b 0
+pause
+goto MainMenu
+
+REM ============================================================
+REM  [6] 停止
+REM ============================================================
+:DoStop
+echo [停止] 关闭 Mockway 工具窗口 ...
+
+call :CloseWindow "%TITLE_SHELL%"
+call :CloseWindow "%TITLE_MOTOR_GUI%"
+call :CloseWindow "%TITLE_TORQUE%"
+call :CloseWindow "%TITLE_INVERSE%"
+
+echo.
+echo  工具窗口已关闭。
+echo.
+if /I "%~1"=="stop" exit /b 0
+pause
+goto MainMenu
+
+REM ============================================================
+REM  [7] WSL2 + MoveIt2
+REM ============================================================
+
+:DoExit
+exit /b 0
+
+:CheckEnvReady
+call :FindConda
+if not defined CONDA_ACTIVATE (
+    echo [错误] 未找到 conda，请先选 [11] 安装环境。
+    pause
+    exit /b 1
+)
+call :InitCondaBase >nul 2>&1
+conda env list | findstr /I /C:"%ENV_NAME%" >nul 2>&1
+if errorlevel 1 (
+    echo [错误] 环境 %ENV_NAME% 不存在，请先选 [11] 安装。
+    pause
+    exit /b 1
+)
+exit /b 0
+
+REM ============================================================
+REM  子程序: 在新窗口启动 Python 程序
+REM ============================================================
+:LaunchApp
+set "WIN_TITLE=%~1"
+set "WORK_DIR=%~2"
+set "PY_SCRIPT=%~3"
+
+if not exist "%WORK_DIR%%PY_SCRIPT%" (
+    echo [错误] 未找到脚本: %WORK_DIR%%PY_SCRIPT%
+    pause
+    exit /b 1
+)
+
+echo [启动] %PY_SCRIPT% ...
+start "%WIN_TITLE%" cmd /k "call "%CONDA_ACTIVATE%" && conda activate %ENV_NAME% && cd /d "%WORK_DIR%" && python %PY_SCRIPT%"
+echo        窗口标题: %WIN_TITLE%
+exit /b 0
+
+REM ============================================================
+REM  子程序: 关闭指定标题的工具窗口
+REM ============================================================
+:CloseWindow
+set "KILL_TITLE=%~1"
+taskkill /FI "WINDOWTITLE eq %KILL_TITLE%*" /T /F >nul 2>&1
+if not errorlevel 1 (
+    echo        已关闭 — %KILL_TITLE%
+)
+exit /b 0
+
+REM ============================================================
+REM  子程序: 初始化 conda（base）
+REM ============================================================
+:InitCondaBase
+call "%CONDA_ACTIVATE%"
+if errorlevel 1 exit /b 1
+where conda >nul 2>&1
+if errorlevel 1 (
+    set "PATH=%MINICONDA_DIR%;%MINICONDA_DIR%\Scripts;%MINICONDA_DIR%\Library\bin;!PATH!"
+)
+exit /b 0
+
+REM ============================================================
+REM  子程序: 显示环境状态
+REM ============================================================
+:ShowEnvStatus
+call :FindConda
+if not defined CONDA_ACTIVATE (
+    echo  状态: conda 未安装
+    goto :ShowChildWindows
+)
+call :InitCondaBase >nul 2>&1
+conda env list | findstr /I /C:"%ENV_NAME%" >nul 2>&1
+if errorlevel 1 (
+    echo  状态: conda 已安装，环境 %ENV_NAME% 未创建
+) else (
+    echo  状态: 环境 %ENV_NAME% 已安装
+)
+:ShowChildWindows
+call :IsWindowRunning "%TITLE_SHELL%" SHELL_RUNNING
+call :IsWindowRunning "%TITLE_MOTOR_GUI%" GUI_RUNNING
+call :IsWindowRunning "%TITLE_TORQUE%" TORQUE_RUNNING
+call :IsWindowRunning "%TITLE_INVERSE%" INVERSE_RUNNING
+if "!SHELL_RUNNING!"=="1" (
+    echo  工作 shell — 运行中
+)
+if "!GUI_RUNNING!"=="1" (
+    echo  motor_gui — 运行中
+)
+if "!TORQUE_RUNNING!"=="1" (
+    echo  力矩补偿 — 运行中
+)
+if "!INVERSE_RUNNING!"=="1" (
+    echo  离线动力学 — 运行中
+)
+exit /b 0
+
+REM ============================================================
+REM  子程序: 检测窗口是否在运行
+REM ============================================================
+:IsWindowRunning
+set "%~2=0"
+tasklist /FI "WINDOWTITLE eq %~1*" 2>nul | findstr /I "cmd.exe" >nul 2>&1
+if not errorlevel 1 set "%~2=1"
+exit /b 0
+
+REM ============================================================
+REM  子程序: 查找 conda
+REM ============================================================
+:FindConda
+set "CONDA_ACTIVATE="
+if exist "%USERPROFILE%\miniconda3\Scripts\activate.bat" (
+    set "CONDA_ACTIVATE=%USERPROFILE%\miniconda3\Scripts\activate.bat"
+    set "MINICONDA_DIR=%USERPROFILE%\miniconda3"
+    goto :FindCondaDone
+)
+if exist "%USERPROFILE%\anaconda3\Scripts\activate.bat" (
+    set "CONDA_ACTIVATE=%USERPROFILE%\anaconda3\Scripts\activate.bat"
+    goto :FindCondaDone
+)
+if exist "C:\ProgramData\miniconda3\Scripts\activate.bat" (
+    set "CONDA_ACTIVATE=C:\ProgramData\miniconda3\Scripts\activate.bat"
+    set "MINICONDA_DIR=C:\ProgramData\miniconda3"
+    goto :FindCondaDone
+)
+if exist "C:\ProgramData\anaconda3\Scripts\activate.bat" (
+    set "CONDA_ACTIVATE=C:\ProgramData\anaconda3\Scripts\activate.bat"
+    goto :FindCondaDone
+)
+:FindCondaDone
+exit /b 0
+
+REM ============================================================
+REM  子程序: 安装 Miniconda
+REM ============================================================
+:InstallMiniconda
+if exist "%MINICONDA_DIR%\Scripts\activate.bat" exit /b 0
+
+echo        下载 Miniconda（清华镜像）...
+call :DownloadMiniconda "%MINICONDA_URL_TSINGHUA%"
+if errorlevel 1 (
+    echo        尝试官方源 ...
+    call :DownloadMiniconda "%MINICONDA_URL_OFFICIAL%"
+)
+if errorlevel 1 exit /b 1
+if not exist "%MINICONDA_INSTALLER%" exit /b 1
+
+echo        静默安装 Miniconda（约 1~3 分钟）...
+start /wait "" "%MINICONDA_INSTALLER%" /InstallationType=JustMe /RegisterPython=0 /AddToPath=1 /S /D=%MINICONDA_DIR%
+if errorlevel 1 exit /b 1
+if not exist "%MINICONDA_DIR%\Scripts\activate.bat" exit /b 1
+
+echo        Miniconda 安装成功: %MINICONDA_DIR%
+del /f /q "%MINICONDA_INSTALLER%" >nul 2>&1
+exit /b 0
+
+REM ============================================================
+REM  子程序: conda 清华镜像
+REM ============================================================
+:ConfigureCondaMirror
+set "CONDA_RC=%MINICONDA_DIR%\.condarc"
+(
+echo channels:
+echo   - defaults
+echo show_channel_urls: true
+echo default_channels:
+echo   - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+echo   - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/r
+echo   - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/msys2
+echo custom_channels:
+echo   conda-forge: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+echo   pytorch: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+) > "%CONDA_RC%"
+if not exist "%CONDA_RC%" exit /b 1
+call conda clean -i -y >nul 2>&1
+exit /b 0
+
+REM ============================================================
+REM  子程序: 下载 Miniconda 安装包
+REM ============================================================
+:DownloadMiniconda
+set "DL_URL=%~1"
+if exist "%MINICONDA_INSTALLER%" del /f /q "%MINICONDA_INSTALLER%" >nul 2>&1
+
+where curl >nul 2>&1
+if not errorlevel 1 (
+    curl -fsSL -o "%MINICONDA_INSTALLER%" "%DL_URL%"
+    if not errorlevel 1 if exist "%MINICONDA_INSTALLER%" exit /b 0
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%DL_URL%' -OutFile '%MINICONDA_INSTALLER%' -UseBasicParsing; exit 0 } catch { exit 1 }"
+if not errorlevel 1 if exist "%MINICONDA_INSTALLER%" exit /b 0
+exit /b 1
+
 :DoFullInstall
 call :RunAdminPs1 ""
 set "RC=!ERRORLEVEL!"
@@ -86,7 +512,7 @@ if errorlevel 1 goto AfterAction
 call :ResolveWslUser
 echo.
 echo ============================================================
-echo  WSL 内安装 Mockway 依赖 (ROS2 Jazzy + MoveIt2)
+echo  WSL 内安装 Mockway 依赖 — ROS2 Jazzy + MoveIt2
 echo  发行版: %DISTRO%    用户: %WSL_USER%
 echo ============================================================
 echo.
@@ -94,10 +520,10 @@ if /I "%WSL_USER%"=="test" (
     wsl -d %DISTRO% -u root -- bash -lc "echo 'test ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/99-mockway-test && chmod 440 /etc/sudoers.d/99-mockway-test" 2>nul
 )
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $OutputEncoding=[Text.Encoding]::UTF8; $repo=(Resolve-Path '%REPO_ROOT%').Path; if($repo -match '^([A-Za-z]):\\(.*)$'){ $wsl='/mnt/'+$matches[1].ToLower()+'/'+$matches[2].Replace('\','/') } else { throw 'bad repo path' }; $sh=$wsl+'/tools/wsl/setup_moveit_jazzy.sh'; wsl -d %DISTRO% -u %WSL_USER% -- env ('MOCKWAY_REPO_WSL='+$wsl) LANG=C.UTF-8 LC_ALL=C.UTF-8 bash $sh; exit $LASTEXITCODE"
+  "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $OutputEncoding=[Text.Encoding]::UTF8; $repo=(Resolve-Path '%REPO_ROOT%').Path; if($repo -match '^([A-Za-z]):\\(.*)$'){ $wsl='/mnt/'+$matches[1].ToLower()+'/'+$matches[2].Replace('\','/') } else { throw 'bad repo path' }; $sh=$wsl+'/setup_ubuntu.sh'; wsl -d %DISTRO% -u %WSL_USER% -- env ('MOCKWAY_REPO_WSL='+$wsl) LANG=C.UTF-8 LC_ALL=C.UTF-8 bash $sh moveit-install; exit $LASTEXITCODE"
 set "RC=!ERRORLEVEL!"
 if "!RC!"=="0" (
-    echo [完成] 依赖已安装。菜单选 [3] 启动 MoveIt Demo。
+    echo [完成] 依赖已安装。菜单选 [13] 启动 MoveIt Demo。
 ) else (
     echo [错误] 安装失败，退出码 !RC!
 )
@@ -115,24 +541,24 @@ net session >nul 2>&1
 if not errorlevel 1 (
     echo [警告] 当前是管理员命令行 — WSLg 图形窗口常会空白或无法显示。
     echo 请改用以下任一方式启动 RViz:
-    echo   1. 双击: tools\launch_moveit_demo.bat
-    echo   2. 普通 CMD 运行: tools\setup_wsl_moveit.bat 3
+    echo   1. 普通 CMD: setup_win_tools.bat demo
+    echo   2. 普通 CMD: setup_win_tools.bat 13
     echo.
     echo 正在尝试通过 explorer 以普通权限启动 ...
-    explorer.exe "%SCRIPT_DIR%launch_moveit_demo.bat"
+    explorer.exe "%~f0" demo
     set "RC=0"
     goto AfterAction
 )
-echo [mockway] 启动 MoveIt2 Demo (真机 + USB-CAN，请先运行菜单 [6] 透传 USB) ...
-call :WinToWslPath "%WSL_DIR%launch_moveit_demo.sh"
+echo [mockway] 启动 MoveIt2 Demo — 真机 + USB-CAN，请先运行菜单 [16] 透传 USB ...
+call :WinToWslPath "%SCRIPT_DIR%setup_ubuntu.sh"
 if errorlevel 1 (
     set "RC=1"
     goto AfterAction
 )
 if /I not "%WSL_USER%"=="root" (
-    wsl -d %DISTRO% -u %WSL_USER% -- bash -lc "sed 's/\r$//' '!_WSL_PATH!' | bash"
+    wsl -d %DISTRO% -u %WSL_USER% -- bash -lc "sed 's/\r$//' '!_WSL_PATH!' | bash -s moveit-demo"
 ) else (
-    wsl -d %DISTRO% -- bash -lc "sed 's/\r$//' '!_WSL_PATH!' | bash"
+    wsl -d %DISTRO% -- bash -lc "sed 's/\r$//' '!_WSL_PATH!' | bash -s moveit-demo"
 )
 set "RC=!ERRORLEVEL!"
 goto AfterAction
@@ -166,7 +592,7 @@ REM ============================================================
 :DoUsbAttach
 echo.
 echo ============================================================
-echo  USB-CAN 透传到 WSL2 (需管理员)
+echo  USB-CAN 透传到 WSL2 — 需管理员
 echo  请先插入 USB-CAN 适配器
 if not "%~2"=="" (
     echo  指定 BusId: %~2
@@ -174,7 +600,7 @@ if not "%~2"=="" (
 ) else (
     set "MOCKWAY_USB_BUSID="
 )
-echo  也可: tools\setup_wsl_moveit.bat 6 5-1
+echo  也可: setup_win_tools.bat 16 5-1
 echo ============================================================
 echo.
 call :RunAdminPs1 "usb"
@@ -188,7 +614,7 @@ REM ============================================================
 :DoUsbDetach
 echo.
 echo ============================================================
-echo  断开 USB 透传 (WSL -^> Windows)
+echo  断开 USB 透传 — WSL 到 Windows
 if not "%~2"=="" (
     echo  指定 BusId: %~2
     set "MOCKWAY_USB_BUSID=%~2"
@@ -196,13 +622,48 @@ if not "%~2"=="" (
     set "MOCKWAY_USB_BUSID="
 )
 if /I "%~3"=="unbind" set "MOCKWAY_USB_UNBIND=1"
-echo  用法: tools\setup_wsl_moveit.bat 8 [BusId] [unbind]
+echo  用法: setup_win_tools.bat 18 [BusId] [unbind]
 echo ============================================================
 echo.
 call :RunAdminPs1 "usb_detach"
 set "RC=!ERRORLEVEL!"
 set "MOCKWAY_USB_BUSID="
 set "MOCKWAY_USB_UNBIND="
+goto AfterAction
+
+REM ============================================================
+REM  [9] Ubuntu 图形桌面 (XFCE + WSLg)
+REM ============================================================
+:DoUbuntuDesktop
+call :ResolveDistro
+if errorlevel 1 goto AfterAction
+call :ResolveWslUser
+echo.
+net session >nul 2>&1
+if not errorlevel 1 (
+    echo [警告] 管理员 CMD 下 WSLg 桌面常无法显示。
+    echo 请用普通 CMD 运行: setup_win_tools.bat desktop
+    echo 正在通过 explorer 以普通权限启动 ...
+    explorer.exe "%~f0" desktop
+    set "RC=0"
+    goto AfterAction
+)
+echo [mockway] 启动 Ubuntu 图形桌面 XFCE — WSL: %DISTRO%, user: %WSL_USER% ...
+call :WinToWslPath "%SCRIPT_DIR%setup_ubuntu.sh"
+if errorlevel 1 (
+    set "RC=1"
+    goto AfterAction
+)
+if /I not "%WSL_USER%"=="root" (
+    wsl -d %DISTRO% -u %WSL_USER% -- bash -lc "sed 's/\r$//' '!_WSL_PATH!' | bash -s desktop"
+) else (
+    wsl -d %DISTRO% -- bash -lc "sed 's/\r$//' '!_WSL_PATH!' | bash -s desktop"
+)
+set "RC=!ERRORLEVEL!"
+if defined MOCKWAY_NO_MENU (
+    echo.
+    echo 若任务栏出现 XFCE 面板/桌面即成功。在桌面终端中可运行 ./setup_ubuntu.sh
+)
 goto AfterAction
 
 REM ============================================================
@@ -269,14 +730,14 @@ set "_RC=%~1"
 echo.
 echo ============================================================
 if "!_RC!"=="301" (
-    echo [下一步] WSL 已启用，请先重启 Windows，再运行本菜单 [1] 或 [2]
+    echo [下一步] WSL 已启用，请先重启 Windows，再运行本菜单 [11] 或 [12]
 ) else if not "!_RC!"=="0" (
     echo [错误] 安装失败，退出码 !_RC!
     echo 请查看日志: %LOG%
 ) else (
     echo [完成] 安装成功
-    echo  菜单 [3] 启动 MoveIt Demo
-    echo  菜单 [4] 打开 WSL Shell
+    echo  菜单 [13] 启动 MoveIt Demo
+    echo  菜单 [14] 打开 WSL Shell
 )
 echo ============================================================
 exit /b 0
@@ -284,6 +745,7 @@ exit /b 0
 REM ============================================================
 REM  解析 WSL 发行版 / 用户
 REM ============================================================
+
 :ResolveDistro
 set "DISTRO=Ubuntu-24.04"
 wsl -d Ubuntu-24.04 -- true >nul 2>&1
@@ -291,7 +753,7 @@ if not errorlevel 1 exit /b 0
 set "DISTRO=Ubuntu"
 wsl -d Ubuntu -- true >nul 2>&1
 if not errorlevel 1 exit /b 0
-echo [错误] 未找到 WSL Ubuntu。请先选 [1] 完整安装。
+echo [错误] 未找到 WSL Ubuntu。请先选 [11] 完整安装。
 exit /b 1
 
 :ResolveWslUser
@@ -318,17 +780,19 @@ REM ============================================================
 if not defined RC set "RC=0"
 echo.
 pause
+if defined MOCKWAY_NO_MENU exit /b %RC%
 if "%~1"=="" goto MainMenu
 exit /b %RC%
 
 goto :EOF
+
 ::#MOCKWAY_PS1
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 $Mode = if ($env:MOCKWAY_PS_MODE) { $env:MOCKWAY_PS_MODE } else { "full" }
 $ScriptDir = $env:MOCKWAY_TOOLS_DIR
-$RepoRoot = (Resolve-Path (Join-Path $ScriptDir "..")).Path
-$WslScript = Join-Path $ScriptDir "wsl\setup_moveit_jazzy.sh"
+$RepoRoot = (Resolve-Path $ScriptDir).Path
+$WslScript = Join-Path $ScriptDir "setup_ubuntu.sh"
 $LogFile = Join-Path $env:TEMP "mockway_wsl_setup.log"
 $Script:ExitRebootRequired = 301
 $Distro = "Ubuntu-24.04"
@@ -378,7 +842,7 @@ function Test-Admin {
 
 function Require-Admin {
     if (-not (Test-Admin)) {
-        throw "Administrator required. Right-click tools\setup_wsl_moveit.bat -> Run as administrator"
+        throw "Administrator required. Right-click tools\setup_win_tools.bat -> Run as administrator"
     }
 }
 
@@ -475,7 +939,7 @@ function Show-WslHypervisorHelp {
     Write-Host "   - CPU virtualization (VT-x/AMD-V) disabled in BIOS"
     Write-Host ""
     Write-Host " Fix (run as Administrator):"
-    Write-Host "   tools\setup_wsl_moveit.bat menu [5]"
+    Write-Host "   tools\setup_win_tools.bat menu [5]"
     Write-Host ""
     Write-Host " Or manually enable in Windows Features:"
     Write-Host "   [x] Windows Subsystem for Linux"
@@ -587,16 +1051,16 @@ function Repair-Hypervisor {
         Write-Host "     - Windows Hypervisor Platform"
         Write-Host "  4. Enable Intel VT-x / AMD-V in BIOS if still failing"
         Write-Host "     https://aka.ms/enablevirtualization"
-        Write-Host "  5. Re-run: tools\setup_wsl_moveit.bat menu [5]"
+        Write-Host "  5. Re-run: tools\setup_win_tools.bat menu [5]"
         Write-Host "  6. Then: wsl --install -d Ubuntu-24.04"
         throw "Hypervisor repair incomplete: vmcompute.exe still missing"
     } elseif ($rebootNeeded) {
         Write-Warn "Reboot required, then run:"
-        Write-Host "  tools\setup_wsl_moveit.bat"
+        Write-Host "  tools\setup_win_tools.bat"
     } else {
         Write-Ok "Repair complete. Try:"
         Write-Host "  wsl --install -d Ubuntu-24.04"
-        Write-Host "  or tools\setup_wsl_moveit.bat menu [7]"
+        Write-Host "  or tools\setup_win_tools.bat menu [7]"
     }
     Write-Host "============================================================"
 }
@@ -618,7 +1082,7 @@ function Request-WindowsReboot {
     Write-Host " Ubuntu cannot install until you reboot." -ForegroundColor Yellow
     Write-Host "============================================================" -ForegroundColor Yellow
     Write-Host "  1. Reboot this PC"
-    Write-Host "  2. Run again: tools\setup_wsl_moveit.bat"
+    Write-Host "  2. Run again: tools\setup_win_tools.bat"
     Write-Host ""
     $answer = Read-Host "Reboot now? [Y/N] (Y = reboot in 30 seconds)"
     if ($answer -match '^[Yy]') {
@@ -765,7 +1229,7 @@ function Install-Ubuntu2404 {
         Write-Host "  Run manually in Admin PowerShell:"
         Write-Host "    wsl --install -d Ubuntu-24.04"
         Write-Host "  After Ubuntu user setup, run:"
-        Write-Host "    tools\setup_wsl_moveit.bat menu [7]"
+        Write-Host "    tools\setup_win_tools.bat menu [7]"
         throw "Ubuntu-24.04 not found after install attempt"
     }
     Write-Ok "Installed: $existing"
@@ -866,13 +1330,13 @@ function Install-MoveItInsideWsl {
     Write-Host "  Workspace:  /home/$wslUser/mockway_ws (or ~/mockway_ws)"
     Write-Host "  Repo (WSL): $RepoWsl"
     Write-Host "  Script:     $bashPath"
-    & wsl.exe -d $Name -u $wslUser -- env "MOCKWAY_REPO_WSL=$RepoWsl" LANG=C.UTF-8 LC_ALL=C.UTF-8 bash "$bashPath"
+    & wsl.exe -d $Name -u $wslUser -- env "MOCKWAY_REPO_WSL=$RepoWsl" LANG=C.UTF-8 LC_ALL=C.UTF-8 bash "$bashPath" moveit-install
     $exitCode = $LASTEXITCODE
     if ($exitCode -ne 0) {
         Write-Host ""
         Write-Warn "WSL install exited with code $exitCode"
         Write-Host "  Try manually in WSL:"
-        Write-Host "  env MOCKWAY_REPO_WSL=$RepoWsl bash $bashPath"
+        Write-Host "  env MOCKWAY_REPO_WSL=$RepoWsl bash $bashPath moveit-install"
         throw "WSL install failed (exit $exitCode). See log: $LogFile"
     }
     Write-Ok "Workspace built: ~/mockway_ws"
@@ -1001,7 +1465,7 @@ function Invoke-UsbipdAttachSafe {
 function Show-WslUsbSerialDevices {
     param([string]$Distro)
 
-    $checkScript = Join-Path $ScriptDir "wsl\usb_serial_check.sh"
+    $checkScript = Join-Path $ScriptDir "setup_ubuntu.sh"
     if (-not (Test-Path $checkScript)) {
         Write-Warn "Missing script: $checkScript"
         return
@@ -1009,10 +1473,10 @@ function Show-WslUsbSerialDevices {
     $winPath = ($checkScript -replace '\\', '/')
     $wslPath = (cmd /c "wsl wslpath -u `"$winPath`"" 2>&1 | Out-String).Trim()
     if (-not $wslPath) {
-        Write-Warn "Could not resolve WSL path for usb_serial_check.sh"
+        Write-Warn "Could not resolve WSL path for setup_ubuntu.sh"
         return
     }
-    wsl -d $Distro -u test -- bash -lc "sed 's/\r$//' '$wslPath' | bash"
+    wsl -d $Distro -u test -- bash -lc "sed 's/\r$//' '$wslPath' | bash -s usb-check"
 }
 
 function Select-UsbCanBusId {
@@ -1073,7 +1537,7 @@ function Invoke-UsbAttachCore {
     )
 
     if (-not (Get-Command usbipd -ErrorAction SilentlyContinue)) {
-        throw "usbipd not found. Run tools\setup_wsl_moveit.bat menu [6] as administrator"
+        throw "usbipd not found. Run tools\setup_win_tools.bat menu [6] as administrator"
     }
 
     Write-Host ""
@@ -1095,7 +1559,7 @@ function Invoke-UsbAttachCore {
         Write-Host ""
         Write-Host "No USB-CAN auto-detected. Pick BusId from Connected list above."
         Write-Host "Example for USB serial / CAN adapter on COM5: 5-1"
-        Write-Host "Or run: tools\setup_wsl_moveit.bat 6 5-1"
+        Write-Host "Or run: tools\setup_win_tools.bat 6 5-1"
         $manual = Read-Host "Enter BusId (blank to cancel)"
         if ($manual -match '^\s*(\d+-\d+)\s*$') {
             $BusId = $Matches[1]
@@ -1116,7 +1580,7 @@ function Invoke-UsbAttachCore {
     Write-Host ""
     Write-Host "Real robot CAN port in xacro is usually /dev/ttyUSB0 or /dev/ttyACM0"
     Write-Host "If no device node: close Windows apps using COM5, re-run menu [6]"
-    Write-Host "To release COM back to Windows: menu [8] or tools\setup_wsl_moveit.bat 8"
+    Write-Host "To release COM back to Windows: menu [8] or tools\setup_win_tools.bat 8"
     Write-Host "If permission denied in WSL: sudo chmod 666 /dev/ttyUSB0"
     Write-Host "Or: sudo usermod -aG dialout `$USER  (restart WSL)"
 }
@@ -1130,7 +1594,7 @@ function Invoke-UsbDetachCore {
     param([string]$BusId = "")
 
     if (-not (Get-Command usbipd -ErrorAction SilentlyContinue)) {
-        throw "usbipd not found. Run tools\setup_wsl_moveit.bat menu [8] as administrator"
+        throw "usbipd not found. Run tools\setup_win_tools.bat menu [8] as administrator"
     }
 
     Write-Host ""
@@ -1197,7 +1661,7 @@ function Invoke-UsbDetachCore {
     usbipd list
     Write-Host ""
     Write-Ok "Done. Windows COM port should be available if unbind was selected."
-    Write-Host "Re-attach to WSL: tools\setup_wsl_moveit.bat 6 [BusId]"
+    Write-Host "Re-attach to WSL: tools\setup_win_tools.bat 6 [BusId]"
 }
 
 function Invoke-UsbDetach {
@@ -1303,15 +1767,15 @@ try {
     Install-Usbipd
     Write-Host ""
     Write-Warn "USB-CAN passthrough (after plugging adapter):"
-    Write-Host "  tools\setup_wsl_moveit.bat menu [6]"
+    Write-Host "  tools\setup_win_tools.bat menu [6]"
 
     Write-Host ""
     Write-Host "============================================================"
     Write-Host " Done"
     Write-Host "============================================================"
-    Write-Host " MoveIt demo:     tools\setup_wsl_moveit.bat menu [3]  (real robot; run [6] USB attach first)"
-    Write-Host " WSL shell:       tools\setup_wsl_moveit.bat menu [4]"
-    Write-Host " USB attach:      tools\setup_wsl_moveit.bat menu [6]"
+    Write-Host " MoveIt demo:     tools\setup_win_tools.bat menu [3]  (real robot; run [6] USB attach first)"
+    Write-Host " WSL shell:       tools\setup_win_tools.bat menu [4]"
+    Write-Host " USB attach:      tools\setup_win_tools.bat menu [6]"
     Write-Host " Manual in WSL:"
     Write-Host "   source ~/mockway_ws/install/setup.bash"
     Write-Host "   ros2 launch moveit_mockway_config demo.launch.py"
