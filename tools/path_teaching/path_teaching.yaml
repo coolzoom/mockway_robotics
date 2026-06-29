@@ -79,6 +79,18 @@ playback:
 recording:
   min_interval_s: 0.005         # 最小采样间隔 5ms (200Hz)
 
+# 示教前缓慢归零（防撞机）
+homing:
+  enabled: true
+  rate: 200
+  kp: 25.0                      # 较软的位置刚度
+  kd: 1.2
+  max_velocity: 0.20            # rad/s，最大关节速度（余弦缓动）
+  min_duration_s: 4.0           # 最短归零时间，即使位移很小也缓慢完成
+  position_tolerance_rad: 0.01  # 判定已到达零位
+  settle_hold_s: 0.5            # 到达后保持零位时间
+  target: [0, 0, 0, 0, 0, 0]   # 关节空间零位目标 (rad)
+
 logging:
   print_status_interval: 0.5
   verbose: false

@@ -16,6 +16,22 @@ control:
   rate: 200
   tau_filter_cutoff_hz: 5.0
   torque_ramp_sec: 1.5
+homing:
+  enabled: true
+  kd: 1.2
+  kp: 25.0
+  max_velocity: 0.2
+  min_duration_s: 4.0
+  position_tolerance_rad: 0.01
+  rate: 200
+  settle_hold_s: 0.5
+  target:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
 logging:
   print_status_interval: 0.5
   verbose: false
