@@ -16,11 +16,13 @@ set "SCRIPT_DIR=%~dp0"
 set "REPO_ROOT=%SCRIPT_DIR%..\"
 set "MOTOR_GUI_DIR=%SCRIPT_DIR%motor_gui\"
 set "DYNAMICS_TEST_DIR=%SCRIPT_DIR%dynamics_test\"
+set "PATH_TEACHING_DIR=%SCRIPT_DIR%path_teaching\"
 
 set "TITLE_SHELL=Mockway-Shell"
 set "TITLE_MOTOR_GUI=Mockway-motor_gui"
 set "TITLE_TORQUE=Mockway-torque"
 set "TITLE_INVERSE=Mockway-inverse"
+set "TITLE_PATH_TEACHING=Mockway-path_teaching"
 
 set "MINICONDA_URL_TSINGHUA=https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Windows-x86_64.exe"
 set "MINICONDA_URL_OFFICIAL=https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe"
@@ -30,6 +32,7 @@ if /I "%~1"=="setup" goto DoSetup
 if /I "%~1"=="motor_gui" goto DoMotorGui
 if /I "%~1"=="torque" goto DoTorque
 if /I "%~1"=="inverse" goto DoInverse
+if /I "%~1"=="path_teaching" goto DoPathTeaching
 if /I "%~1"=="shell" goto DoShell
 if /I "%~1"=="start" goto DoShell
 if /I "%~1"=="stop" goto DoStop
@@ -47,20 +50,22 @@ echo  [1] 安装 / 更新环境 (Miniconda + Pinocchio + 依赖)
 echo  [2] 启动 motor_gui (电机调试)
 echo  [3] 启动 实时力矩补偿 (realtime_torque_compensation)
 echo  [4] 启动 离线动力学测试 (inverse_dynamics_test)
-echo  [5] 打开 Python 工作 shell
-echo  [6] 停止 (关闭工具窗口)
-echo  [7] WSL2 / MoveIt2 工具菜单 (Ubuntu 24.04)
+echo  [5] 启动 路径示教 (path_teaching_gui)
+echo  [6] 打开 Python 工作 shell
+echo  [7] 停止 (关闭工具窗口)
+echo  [8] WSL2 / MoveIt2 工具菜单 (Ubuntu 24.04)
 echo  [0] 退出
 echo.
 set "MENU_CHOICE="
-set /p MENU_CHOICE=请选择 [0-7]:
+set /p MENU_CHOICE=请选择 [0-8]:
 if "%MENU_CHOICE%"=="1" goto DoSetup
 if "%MENU_CHOICE%"=="2" goto DoMotorGui
 if "%MENU_CHOICE%"=="3" goto DoTorque
 if "%MENU_CHOICE%"=="4" goto DoInverse
-if "%MENU_CHOICE%"=="5" goto DoShell
-if "%MENU_CHOICE%"=="6" goto DoStop
-if "%MENU_CHOICE%"=="7" goto DoWslMoveIt
+if "%MENU_CHOICE%"=="5" goto DoPathTeaching
+if "%MENU_CHOICE%"=="6" goto DoShell
+if "%MENU_CHOICE%"=="7" goto DoStop
+if "%MENU_CHOICE%"=="8" goto DoWslMoveIt
 if "%MENU_CHOICE%"=="0" goto DoExit
 echo 无效选择，请重试。
 timeout /t 2 >nul
@@ -135,7 +140,7 @@ echo [8/8] 安装完成。
 echo.
 echo ============================================================
 echo  环境 %ENV_NAME% 已就绪。
-echo  返回菜单后可选 [2]~[5] 启动工具。
+echo  返回菜单后可选 [2]~[6] 启动工具。
 echo ============================================================
 echo.
 pause
@@ -187,7 +192,21 @@ pause
 goto MainMenu
 
 REM ============================================================
-REM  [5] Python 工作 shell
+REM  [5] 路径示教
+REM ============================================================
+:DoPathTeaching
+call :CheckEnvReady
+if errorlevel 1 (
+    if /I "%~1"=="path_teaching" exit /b 1
+    goto MainMenu
+)
+call :LaunchApp "%TITLE_PATH_TEACHING%" "%PATH_TEACHING_DIR%" "path_teaching_gui.py"
+if /I "%~1"=="path_teaching" exit /b 0
+pause
+goto MainMenu
+
+REM ============================================================
+REM  [6] Python 工作 shell
 REM ============================================================
 :DoShell
 call :CheckEnvReady
@@ -209,7 +228,7 @@ pause
 goto MainMenu
 
 REM ============================================================
-REM  [6] 停止
+REM  [7] 停止
 REM ============================================================
 :DoStop
 echo [停止] 关闭 Mockway 工具窗口 ...
@@ -218,6 +237,7 @@ call :CloseWindow "%TITLE_SHELL%"
 call :CloseWindow "%TITLE_MOTOR_GUI%"
 call :CloseWindow "%TITLE_TORQUE%"
 call :CloseWindow "%TITLE_INVERSE%"
+call :CloseWindow "%TITLE_PATH_TEACHING%"
 
 echo.
 echo  工具窗口已关闭。
@@ -227,7 +247,7 @@ pause
 goto MainMenu
 
 REM ============================================================
-REM  [7] WSL2 + MoveIt2
+REM  [8] WSL2 + MoveIt2
 REM ============================================================
 :DoWslMoveIt
 echo [启动] WSL2 Ubuntu 24.04 + MoveIt2 安装（需管理员）...
@@ -317,10 +337,12 @@ call :IsWindowRunning "%TITLE_SHELL%" SHELL_RUNNING
 call :IsWindowRunning "%TITLE_MOTOR_GUI%" GUI_RUNNING
 call :IsWindowRunning "%TITLE_TORQUE%" TORQUE_RUNNING
 call :IsWindowRunning "%TITLE_INVERSE%" INVERSE_RUNNING
+call :IsWindowRunning "%TITLE_PATH_TEACHING%" PATH_TEACHING_RUNNING
 if "!SHELL_RUNNING!"=="1" echo  工作 shell: 【运行中】
 if "!GUI_RUNNING!"=="1" echo  motor_gui: 【运行中】
 if "!TORQUE_RUNNING!"=="1" echo  力矩补偿: 【运行中】
 if "!INVERSE_RUNNING!"=="1" echo  离线动力学: 【运行中】
+if "!PATH_TEACHING_RUNNING!"=="1" echo  路径示教: 【运行中】
 exit /b 0
 
 REM ============================================================

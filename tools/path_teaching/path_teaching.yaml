@@ -1,0 +1,84 @@
+# Mockway Robot - Path Teaching (gravity-compensated teach & playback)
+
+can:
+  port: "COM5"
+  adapter_type: "damiao"
+  serial_baudrate: 921600
+  can_baudrate: 1000000
+
+# 示教时所有关节开启重力补偿
+motors:
+  - id: 1
+    type: "DM_J4310_2EC"
+    master_id: 0
+    direction: 1
+    compensation_enabled: true
+    description: "Joint 1 - Shoulder"
+
+  - id: 2
+    type: "DM4340"
+    master_id: 0
+    direction: 1
+    compensation_enabled: true
+    gravity_torque_scale: 1.2
+    description: "Joint 2 - Elbow"
+
+  - id: 3
+    type: "DM4340"
+    master_id: 0
+    direction: -1
+    compensation_enabled: true
+    description: "Joint 3 - Forearm"
+
+  - id: 4
+    type: "DM_J4310_2EC"
+    master_id: 0
+    direction: 1
+    compensation_enabled: true
+    description: "Joint 4 - Wrist Pitch"
+
+  - id: 5
+    type: "DM_J4310_2EC"
+    master_id: 0
+    direction: 1
+    compensation_enabled: true
+    description: "Joint 5 - Wrist Roll"
+
+  - id: 6
+    type: "DM_J4310_2EC"
+    master_id: 0
+    direction: 1
+    compensation_enabled: true
+    description: "Joint 6 - Wrist Yaw"
+
+control:
+  rate: 200                     # 重力补偿与录制采样控制频率 (Hz)
+  compensation_mode: "gravity"
+  gravity_torque_scale: 1.0
+  full_dynamics_torque_scale: 0.35
+  tau_filter_cutoff_hz: 5.0
+  hold_inactive_joints: false   # 全部关节补偿，无需锁定
+  hold_kp: 50.0
+  hold_kd: 1.0
+  torque_ramp_sec: 1.5
+
+  mit_params:
+    kp: 0.0
+    kd: 0.0
+
+# 路径回放 MIT 位置控制参数
+playback:
+  rate: 200
+  kp: 40.0
+  kd: 1.0
+  speed_scale: 1.0
+  corner_angle_deg: 12.0
+  blend_time_ratio: 0.35
+
+# 录制参数
+recording:
+  min_interval_s: 0.005         # 最小采样间隔 5ms (200Hz)
+
+logging:
+  print_status_interval: 0.5
+  verbose: false

@@ -1,0 +1,68 @@
+can:
+  adapter_type: damiao
+  can_baudrate: 1000000
+  port: COM5
+  serial_baudrate: 921600
+control:
+  compensation_mode: gravity
+  full_dynamics_torque_scale: 0.35
+  gravity_torque_scale: 1.0
+  hold_inactive_joints: false
+  hold_kd: 1.0
+  hold_kp: 50.0
+  mit_params:
+    kd: 0.0
+    kp: 0.0
+  rate: 200
+  tau_filter_cutoff_hz: 5.0
+  torque_ramp_sec: 1.5
+logging:
+  print_status_interval: 0.5
+  verbose: false
+motors:
+- compensation_enabled: true
+  description: Joint 1 - Shoulder
+  direction: 1
+  id: 1
+  master_id: 0
+  type: DM_J4310_2EC
+- compensation_enabled: true
+  description: Joint 2 - Elbow
+  direction: 1
+  gravity_torque_scale: 1.2
+  id: 2
+  master_id: 0
+  type: DM4340
+- compensation_enabled: true
+  description: Joint 3 - Forearm
+  direction: -1
+  id: 3
+  master_id: 0
+  type: DM4340
+- compensation_enabled: true
+  description: Joint 4 - Wrist Pitch
+  direction: 1
+  id: 4
+  master_id: 0
+  type: DM_J4310_2EC
+- compensation_enabled: true
+  description: Joint 5 - Wrist Roll
+  direction: 1
+  id: 5
+  master_id: 0
+  type: DM_J4310_2EC
+- compensation_enabled: true
+  description: Joint 6 - Wrist Yaw
+  direction: 1
+  id: 6
+  master_id: 0
+  type: DM_J4310_2EC
+playback:
+  blend_time_ratio: 0.35
+  corner_angle_deg: 12.0
+  kd: 1.0
+  kp: 40.0
+  rate: 200
+  speed_scale: 1.0
+recording:
+  min_interval_s: 0.005
