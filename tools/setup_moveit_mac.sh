@@ -31,8 +31,12 @@ CONDA_SH=""
 # 仅这两个包能在 macOS 编译（dmmotor_hardware_interface 依赖 linux/can.h，跳过）
 BUILD_PKGS="mockway_description moveit_mockway_config"
 
-# RoboStack 频道：先 conda-forge 再 robostack-jazzy
-ROBOSTACK_CHANNELS=(--override-channels -c conda-forge -c robostack-jazzy)
+# RoboStack 频道（用完整 URL，避免被全局 ~/.condarc 的 custom_channels 重定向）
+# conda-forge 默认走清华镜像，失败时自动回退官方源；robostack 只在 anaconda.org 上
+CONDA_FORGE_MIRROR="${MOCKWAY_CONDA_FORGE_URL:-https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge}"
+CONDA_FORGE_OFFICIAL="https://conda.anaconda.org/conda-forge"
+ROBOSTACK_URL="${MOCKWAY_ROBOSTACK_URL:-https://conda.anaconda.org/robostack-${ROS_DISTRO}}"
+CONDARC_TMP="${TMPDIR:-/tmp}/mockway_moveit_condarc.yaml"
 
 # ROS2 / MoveIt2 包（RoboStack 命名: ros-<distro>-<pkg>）
 ROS_PKGS=(
@@ -102,20 +106,56 @@ check_repo() {
 }
 
 # ------------------------------------------------------------
-#  安装 / 更新 RoboStack ROS 依赖
+#  写隔离的 condarc（完整频道 URL + 严格优先级 + 重试），
+#  通过 CONDARC 环境变量使用，绕开全局 ~/.condarc 的 custom_channels 重定向
+# ------------------------------------------------------------
+make_condarc() {
+    local conda_forge_url="$1"
+    cat > "$CONDARC_TMP" <<EOF
+channels:
+  - $conda_forge_url
+  - $ROBOSTACK_URL
+channel_priority: strict
+show_channel_urls: true
+remote_connect_timeout_secs: 30.0
+remote_read_timeout_secs: 120.0
+remote_max_retries: 5
+remote_backoff_factor: 2
+EOF
+}
+
+# 用隔离 condarc 运行 conda，并保留真实退出码（避免被 tee 掩盖）
+conda_do() {
+    CONDARC="$CONDARC_TMP" conda "$@" 2>&1 | tee -a "$LOG"
+    return "${PIPESTATUS[0]}"
+}
+
+# 用给定 conda-forge 源完整安装一次（create 或 install）
+_install_ros_deps_once() {
+    local all=("${ROS_PKGS[@]}" "${BUILD_TOOLS[@]}")
+    if env_exists; then
+        say "[ros] 环境 $ENV_NAME 已存在，安装/更新 ROS + 编译工具 ..."
+        conda_do install -n "$ENV_NAME" -y "${all[@]}" || return 1
+    else
+        say "[ros] 创建 RoboStack 环境 $ENV_NAME（ROS2 ${ROS_DISTRO} + MoveIt2 + 编译工具）..."
+        conda_do create -n "$ENV_NAME" -y "${all[@]}" || return 1
+    fi
+    env_exists || { err "环境创建后仍不存在，可能是下载中断"; return 1; }
+}
+
+# ------------------------------------------------------------
+#  安装 / 更新 RoboStack ROS 依赖（镜像源失败自动回退官方源）
 # ------------------------------------------------------------
 install_ros_deps() {
-    if env_exists; then
-        say "[ros] 环境 $ENV_NAME 已存在，安装/更新 ROS 包 ..."
-        conda install -n "$ENV_NAME" "${ROBOSTACK_CHANNELS[@]}" -y "${ROS_PKGS[@]}" 2>&1 | tee -a "$LOG"
-    else
-        say "[ros] 创建 RoboStack 环境 $ENV_NAME (ros-${ROS_DISTRO}-desktop) ..."
-        conda create -n "$ENV_NAME" "${ROBOSTACK_CHANNELS[@]}" -y "ros-${ROS_DISTRO}-desktop" 2>&1 | tee -a "$LOG"
-        say "[ros] 安装 MoveIt2 / ros2_control 等 ..."
-        conda install -n "$ENV_NAME" "${ROBOSTACK_CHANNELS[@]}" -y "${ROS_PKGS[@]}" 2>&1 | tee -a "$LOG"
+    say "[ros] conda-forge 源: $CONDA_FORGE_MIRROR"
+    say "[ros] robostack 源:   $ROBOSTACK_URL"
+    make_condarc "$CONDA_FORGE_MIRROR"
+    if _install_ros_deps_once; then
+        return 0
     fi
-    say "[ros] 安装编译工具链 (compilers / cmake / colcon) ..."
-    conda install -n "$ENV_NAME" "${ROBOSTACK_CHANNELS[@]}" -y "${BUILD_TOOLS[@]}" 2>&1 | tee -a "$LOG"
+    warn "镜像源安装失败，回退官方 conda-forge 源重试 ..."
+    make_condarc "$CONDA_FORGE_OFFICIAL"
+    _install_ros_deps_once
 }
 
 # ------------------------------------------------------------
@@ -123,13 +163,27 @@ install_ros_deps() {
 # ------------------------------------------------------------
 build_ws() {
     mkdir -p "$WS_DIR/src"
-    local link="$WS_DIR/src/mockway_robotics"
-    if [[ -L "$link" || -d "$link" ]]; then
-        say "[ws] 链接已存在: $link"
-    else
-        ln -s "$REPO_ROOT" "$link"
-        say "[ws] 已链接仓库 -> $link"
+    # 旧版会把整个仓库 symlink 进 src，导致 colcon 发现 dmmotor_hardware_interface
+    # （依赖 linux/can.h，macOS 编译不了）并要求先编它。这里清理掉，改为按包逐个链接。
+    local whole="$WS_DIR/src/mockway_robotics"
+    if [[ -L "$whole" ]]; then
+        rm -f "$whole"
+        say "[ws] 已移除旧的整仓库链接: $whole"
     fi
+    # 只把 macOS 能编译的包链接进工作空间，避免 colcon 发现/依赖 dmmotor_hardware_interface
+    local pkg
+    for pkg in $BUILD_PKGS; do
+        local link="$WS_DIR/src/$pkg"
+        if [[ ! -e "$REPO_ROOT/$pkg/package.xml" ]]; then
+            err "未找到包: $REPO_ROOT/$pkg"
+            return 1
+        fi
+        rm -f "$link" 2>/dev/null || true
+        ln -s "$REPO_ROOT/$pkg" "$link"
+        say "[ws] 链接包 -> $link"
+        # 清理上一次（旧 src 布局）残留的 build/install，避免 CMakeCache 里的源路径失效
+        rm -rf "$WS_DIR/build/$pkg" "$WS_DIR/install/$pkg" 2>/dev/null || true
+    done
     say "[ws] colcon 编译: $BUILD_PKGS （跳过 dmmotor_hardware_interface: macOS 无 SocketCAN）"
     run_in_env "cd '$WS_DIR' && colcon build --symlink-install --packages-select $BUILD_PKGS" 2>&1 | tee -a "$LOG"
     local rc=${PIPESTATUS[0]}
