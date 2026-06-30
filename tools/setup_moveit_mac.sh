@@ -28,8 +28,9 @@ LOG="${TMPDIR:-/tmp}/mockway_moveit_mac.log"
 MINICONDA_DIR="$HOME/miniconda3"
 CONDA_SH=""
 
-# 仅这两个包能在 macOS 编译（dmmotor_hardware_interface 依赖 linux/can.h，跳过）
-BUILD_PKGS="mockway_description moveit_mockway_config"
+# macOS 上编译的包。dmmotor_hardware_interface 已做跨平台改造：
+# SocketCAN(linux/can.h) 仅 Linux 编译，macOS 走 USB-CAN 串口(termios + IOSSIOSPEED)。
+BUILD_PKGS="mockway_description dmmotor_hardware_interface moveit_mockway_config"
 
 # RoboStack 频道（用完整 URL，避免被全局 ~/.condarc 的 custom_channels 重定向）
 # conda-forge 默认走清华镜像，失败时自动回退官方源；robostack 只在 anaconda.org 上
@@ -163,8 +164,8 @@ install_ros_deps() {
 # ------------------------------------------------------------
 build_ws() {
     mkdir -p "$WS_DIR/src"
-    # 旧版会把整个仓库 symlink 进 src，导致 colcon 发现 dmmotor_hardware_interface
-    # （依赖 linux/can.h，macOS 编译不了）并要求先编它。这里清理掉，改为按包逐个链接。
+    # 旧版会把整个仓库 symlink 进 src，使 colcon 发现仓库内全部包（含 macOS 编不了的
+    # mockway_lua_moveit 等）。这里清理掉，改为只按包逐个链接需要编译的包。
     local whole="$WS_DIR/src/mockway_robotics"
     if [[ -L "$whole" ]]; then
         rm -f "$whole"
@@ -184,7 +185,7 @@ build_ws() {
         # 清理上一次（旧 src 布局）残留的 build/install，避免 CMakeCache 里的源路径失效
         rm -rf "$WS_DIR/build/$pkg" "$WS_DIR/install/$pkg" 2>/dev/null || true
     done
-    say "[ws] colcon 编译: $BUILD_PKGS （跳过 dmmotor_hardware_interface: macOS 无 SocketCAN）"
+    say "[ws] colcon 编译: $BUILD_PKGS"
     run_in_env "cd '$WS_DIR' && colcon build --symlink-install --packages-select $BUILD_PKGS" 2>&1 | tee -a "$LOG"
     local rc=${PIPESTATUS[0]}
     if [[ $rc -ne 0 ]]; then
@@ -210,10 +211,11 @@ do_full_install() {
     build_ws || return 1
     say ""
     say "============================================================"
-    say " 安装完成。菜单 [3] 启动 MoveIt2 Demo (仿真)。"
+    say " 安装完成。菜单 [3] 启动 MoveIt2 Demo（可选仿真 / 真机 USB-CAN）。"
     say " 手动启动: conda activate $ENV_NAME"
     say "           source $WS_DIR/install/setup.bash"
-    say "           ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=true"
+    say "           # 仿真:  ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=true"
+    say "           # 真机:  ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=false"
     say "============================================================"
 }
 
@@ -226,7 +228,8 @@ do_install_deps() {
 }
 
 # ------------------------------------------------------------
-#  [3] 启动 MoveIt2 Demo (RViz, 原生窗口, 仿真)
+#  [3] 启动 MoveIt2 Demo (RViz 原生窗口)；可选仿真 / 真机 USB-CAN
+#      参数: mock(默认) | real
 # ------------------------------------------------------------
 do_launch_demo() {
     ensure_conda || return 1
@@ -234,9 +237,26 @@ do_launch_demo() {
     if [[ ! -f "$WS_DIR/install/setup.bash" ]]; then
         err "工作空间未编译: $WS_DIR，请先选 [1] 或 [9]。"; return 1
     fi
-    say "[mockway] 启动 MoveIt2 Demo (use_mock_hardware:=true, RViz 原生窗口) ..."
-    say "[mockway] macOS 为仿真模式；接真机 USB-CAN 请用 Linux/WSL2。"
-    run_in_env "source '$WS_DIR/install/setup.bash' && export QT_QPA_PLATFORM=cocoa && ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=true"
+    local mode="${1:-}"
+    if [[ -z "$mode" ]]; then
+        local m
+        read -r -p "硬件模式? [1] 仿真 mock(默认)  [2] 真机 USB-CAN : " m
+        case "$m" in 2|real|REAL) mode="real";; *) mode="mock";; esac
+    fi
+    local mock="true"
+    [[ "$mode" == "real" || "$mode" == "2" ]] && mock="false"
+
+    if [[ "$mock" == "false" ]]; then
+        say "[mockway] 真机模式 (use_mock_hardware:=false) — USB-CAN 串口直连"
+        say "[mockway] 请确认 xacro 的 ros2_control 参数: can_type=usb_can,"
+        say "          can_interface 指向 macOS 串口设备（/dev/tty.usbserial-* 或 /dev/tty.usbmodem*）"
+        say "          当前已连接串口:"
+        ls /dev/tty.usb* 2>/dev/null | sed 's/^/            /' || say "            (未发现 /dev/tty.usb*，请插入 USB-CAN 适配器)"
+    else
+        say "[mockway] 仿真模式 (use_mock_hardware:=true, mock_components/GenericSystem)"
+    fi
+    say "[mockway] 启动 MoveIt2 Demo (RViz 原生窗口) ..."
+    run_in_env "source '$WS_DIR/install/setup.bash' && export QT_QPA_PLATFORM=cocoa && ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=$mock"
 }
 
 # ------------------------------------------------------------
@@ -297,19 +317,27 @@ do_status() {
 do_hw_info() {
     say ""
     say "============================================================"
-    say " 真机 / USB-CAN 说明 (macOS 限制)"
+    say " 真机 / USB-CAN 说明 (macOS)"
     say "============================================================"
-    say " dmmotor_hardware_interface 使用 Linux 内核头文件 <linux/can.h>"
-    say " (SocketCAN)，无法在 macOS 上编译，因此 macOS 仅支持仿真:"
-    say "   ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=true"
+    say " dmmotor_hardware_interface 已做跨平台改造:"
+    say "   - SocketCAN (linux/can.h, can0): 仅 Linux 支持，macOS 不可用"
+    say "   - USB-CAN 串口 (达妙 / 维特适配器): macOS 可用 ✔"
+    say "     (termios + IOSSIOSPEED 设置 921600 波特率)"
     say ""
-    say " 需要驱动真实电机 / USB-CAN 时，请在以下平台运行:"
-    say "   - 原生 Ubuntu 24.04: tools/setup_moveit_ubuntu.sh"
-    say "   - Windows + WSL2:     tools/setup_wsl_moveit.bat (含 usbipd USB 透传)"
+    say " macOS 接真机步骤:"
+    say "   1. 插入 USB-CAN 适配器，确认下方出现 /dev/tty.usbserial-* 或 /dev/tty.usbmodem*"
+    say "   2. 在 xacro 的 ros2_control hardware 参数中设置:"
+    say "        <param name=\"can_type\">usb_can</param>"
+    say "        <param name=\"can_interface\">/dev/tty.usbserial-XXXX</param>"
+    say "        <param name=\"usb_can_adapter\">damiao</param>   # 或 witmotion / auto"
+    say "   3. 菜单 [3] 选 [2] 真机，或运行: tools/setup_moveit_mac.sh 3 real"
     say ""
-    say " 当前 macOS 已连接的串口设备 (仅供参考):"
+    say " 注: 若要用 can0 这种内核 SocketCAN 接口，仍需 Linux (setup_moveit_ubuntu.sh)"
+    say "     或 Windows+WSL2 (setup_wsl_moveit.bat, 含 usbipd 透传)。"
+    say ""
+    say " 当前 macOS 已连接的串口设备:"
     ls -la /dev/tty.usb* /dev/tty.usbserial* /dev/tty.usbmodem* 2>/dev/null \
-        || say "  (未发现 /dev/tty.usb* 设备)"
+        || say "  (未发现 /dev/tty.usb* 设备，请插入 USB-CAN 适配器)"
 }
 
 # ------------------------------------------------------------
@@ -352,32 +380,33 @@ show_menu() {
     say ""
     say " [1] 完整安装 (RoboStack ROS2 Jazzy + MoveIt2 + 编译 mockway_ws)"
     say " [2] 仅安装/更新 ROS 依赖 (conda-forge + robostack-jazzy)"
-    say " [3] 启动 MoveIt2 Demo (RViz 原生窗口, 仿真 use_mock_hardware)"
+    say " [3] 启动 MoveIt2 Demo (RViz 原生窗口; 可选仿真 / 真机 USB-CAN)"
     say " [4] 打开 ROS 工作 Shell"
     say " [5] 环境诊断"
-    say " [6] 真机 / USB-CAN 说明 (macOS 限制)"
+    say " [6] 真机 / USB-CAN 说明"
     say " [9] 重新编译 mockway_ws (colcon)"
     say " [0] 退出"
     say ""
 }
 
 dispatch() {
-    case "$1" in
+    local choice="$1"; shift || true
+    case "$choice" in
         1) do_full_install ;;
         2) do_install_deps ;;
-        3) do_launch_demo ;;
+        3) do_launch_demo "$@" ;;
         4) do_shell ;;
         5) do_status ;;
         6) do_hw_info ;;
         9|rebuild) do_rebuild ;;
         0|q|Q) exit 0 ;;
-        *) err "无效选项: $1"; return 1 ;;
+        *) err "无效选项: $choice"; return 1 ;;
     esac
 }
 
-# 命令行直达
+# 命令行直达（如: setup_moveit_mac.sh 3 real）
 if [[ -n "${1:-}" ]]; then
-    dispatch "$1"
+    dispatch "$@"
     exit $?
 fi
 

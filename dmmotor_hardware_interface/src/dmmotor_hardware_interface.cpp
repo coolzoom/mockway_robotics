@@ -19,15 +19,37 @@
 #include "rclcpp/rclcpp.hpp"
 
 // CAN通信相关头文件
-#include <linux/can.h>
-#include <linux/can/raw.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <net/if.h>
 #include <unistd.h>
 #include <cstring>
-#include <fcntl.h>    // O_NONBLOCK 定义在此
-#include <termios.h>  // 串口配置
+#include <cstdint>
+#include <cerrno>
+#include <fcntl.h>     // O_NONBLOCK 定义在此
+#include <termios.h>   // 串口配置（USB-CAN，POSIX：Linux/macOS 通用）
+#include <sys/ioctl.h> // ioctl（SocketCAN 取接口号 / macOS 设置波特率）
+
+#if defined(__linux__)
+  // Linux/WSL：使用内核 SocketCAN（与原行为完全一致）
+  #include <linux/can.h>
+  #include <linux/can/raw.h>
+  #include <sys/socket.h>
+  #include <net/if.h>
+  #define DMMOTOR_HAS_SOCKETCAN 1
+#else
+  // 非 Linux（如 macOS）：内核无 SocketCAN，仅支持 USB-CAN 串口路径。
+  // 提供一个可移植的 can_frame 定义，使其余代码无需改动即可编译。
+  #ifndef CAN_EFF_FLAG
+    #define CAN_EFF_FLAG 0x80000000U
+  #endif
+  struct can_frame {
+    uint32_t can_id;   // 帧 ID（兼容标准/扩展帧 + CAN_EFF_FLAG）
+    uint8_t  can_dlc;  // 数据长度
+    uint8_t  data[8];  // 数据
+  };
+  #define DMMOTOR_HAS_SOCKETCAN 0
+  #if defined(__APPLE__)
+    #include <IOKit/serial/ioss.h>  // IOSSIOSPEED：设置任意（非标准）串口波特率
+  #endif
+#endif
 
 namespace dmmotor_hardware_interface
 {
@@ -130,7 +152,7 @@ private:
   // CAN通信相关
   CanType can_type_{SOCKET_CAN};  // CAN接口类型，默认SocketCAN
   UsbCanAdapter usb_can_adapter_{USB_CAN_DAMIAO};
-  int can_socket_;                // SocketCAN socket文件描述符
+  int can_socket_{-1};            // SocketCAN socket文件描述符
   int serial_fd_{-1};             // USB-CAN串口文件描述符
   int serial_baudrate_{921600};   // USB-CAN串口波特率
   std::string can_interface_;     // CAN接口名称（can0）或串口设备路径（/dev/ttyUSB0）
@@ -526,6 +548,7 @@ hardware_interface::return_type DMMototHardwareInterface::write(
 
 bool DMMototHardwareInterface::init_can_socket()
 {
+#if DMMOTOR_HAS_SOCKETCAN
   can_socket_ = socket(PF_CAN, SOCK_RAW, CAN_RAW);
   if (can_socket_ < 0)
   {
@@ -552,6 +575,14 @@ bool DMMototHardwareInterface::init_can_socket()
   fcntl(can_socket_, F_SETFL, flags | O_NONBLOCK);
 
   return true;
+#else
+  // 非 Linux 平台（如 macOS）内核没有 SocketCAN，请改用 USB-CAN 适配器：
+  // 在 ros2_control 的 hardware 参数里设置 <param name="can_type">usb_can</param>
+  RCLCPP_ERROR(rclcpp::get_logger("DMMototHardwareInterface"),
+               "SocketCAN 仅在 Linux 可用。当前平台请设置 "
+               "<param name=\"can_type\">usb_can</param> 使用 USB-CAN 适配器。");
+  return false;
+#endif
 }
 
 void DMMototHardwareInterface::close_can_socket()
@@ -586,6 +617,12 @@ bool DMMototHardwareInterface::init_usb_can_serial()
   }
 
   // 设置波特率
+#if defined(__APPLE__)
+  // macOS：标准 termios 不支持 >230400 的 Bxxxx 常量，先设一个基准速率，
+  //        真正的波特率在 tcsetattr 之后用 IOSSIOSPEED ioctl 设置（见下方）
+  cfsetispeed(&tty, B115200);
+  cfsetospeed(&tty, B115200);
+#else
   speed_t baud;
   switch (serial_baudrate_)
   {
@@ -604,13 +641,16 @@ bool DMMototHardwareInterface::init_usb_can_serial()
   }
   cfsetispeed(&tty, baud);
   cfsetospeed(&tty, baud);
+#endif
 
   // 8N1配置
   tty.c_cflag &= ~PARENB;        // 无奇偶校验
   tty.c_cflag &= ~CSTOPB;        // 1位停止位
   tty.c_cflag &= ~CSIZE;
   tty.c_cflag |= CS8;            // 8位数据位
-  tty.c_cflag &= ~CRTSCTS;       // 无硬件流控
+#ifdef CRTSCTS
+  tty.c_cflag &= ~CRTSCTS;       // 无硬件流控（macOS 严格 POSIX 下可能未定义）
+#endif
   tty.c_cflag |= CREAD | CLOCAL; // 使能接收，忽略调制解调器控制线
 
   // 原始模式
@@ -631,6 +671,18 @@ bool DMMototHardwareInterface::init_usb_can_serial()
     serial_fd_ = -1;
     return false;
   }
+
+#if defined(__APPLE__)
+  // macOS：用 IOSSIOSPEED 设置任意波特率（如 921600），标准 Bxxxx 不支持高速率
+  {
+    speed_t apple_baud = static_cast<speed_t>(serial_baudrate_);
+    if (ioctl(serial_fd_, IOSSIOSPEED, &apple_baud) == -1) {
+      RCLCPP_WARN(rclcpp::get_logger("DMMototHardwareInterface"),
+                  "Failed to set custom baudrate %d via IOSSIOSPEED (errno=%d)",
+                  serial_baudrate_, errno);
+    }
+  }
+#endif
 
   // 清空缓冲区
   tcflush(serial_fd_, TCIOFLUSH);
