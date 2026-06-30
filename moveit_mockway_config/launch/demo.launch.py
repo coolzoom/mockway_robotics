@@ -36,9 +36,25 @@ def generate_launch_description():
             description="使用 mock_components/GenericSystem 替代真实硬件（dmmotor_hardware_interface/DMMototHardwareInterface）",
         )
     )
+    ld.add_action(
+        DeclareLaunchArgument(
+            "can_interface",
+            default_value="/dev/ttyACM0",
+            description="USB-CAN 串口设备：WSL/Linux 默认 /dev/ttyACM0；macOS 用 /dev/cu.usbmodem*",
+        )
+    )
+    ld.add_action(
+        DeclareLaunchArgument(
+            "collision_mode",
+            default_value="mesh",
+            description="碰撞几何: mesh(默认, Linux/WSL) | primitive(macOS 包围盒, 规避 FCL 崩溃)",
+        )
+    )
 
     launch_args = {
         "use_mock_hardware": LaunchConfiguration("use_mock_hardware"),
+        "can_interface": LaunchConfiguration("can_interface"),
+        "collision_mode": LaunchConfiguration("collision_mode"),
     }
 
     virtual_joints_launch = os.path.join(pkg_path, "launch", "static_virtual_joint_tfs.launch.py")

@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
-    <xacro:macro name="mockway_description_ros2_control" params="name initial_positions_file use_mock_hardware:=false">
+    <xacro:macro name="mockway_description_ros2_control" params="name initial_positions_file use_mock_hardware:=false can_interface:=/dev/ttyACM0">
         <xacro:property name="initial_positions" value="${xacro.load_yaml(initial_positions_file)['initial_positions']}"/>
 
         <ros2_control name="${name}" type="system">
@@ -12,9 +12,10 @@
                 <xacro:unless value="${use_mock_hardware}">
                     <!-- DM Motor Hardware Interface for real hardware -->
                     <plugin>dmmotor_hardware_interface/DMMototHardwareInterface</plugin>
-                    <!-- WSL + 达妙 USB-CAN (2e88:4603) 为 CDC 设备，映射为 /dev/ttyACM0 -->
+                    <!-- 串口设备路径：WSL/Linux 默认 /dev/ttyACM0；macOS 用 /dev/cu.usbmodem* -->
+                    <!-- 可由 launch 参数 can_interface 覆盖，例如 can_interface:=/dev/cu.usbmodem00000000050C1 -->
                     <param name="can_type">usb_can</param>
-                    <param name="can_interface">/dev/ttyACM0</param>
+                    <param name="can_interface">${can_interface}</param>
                     <param name="serial_baudrate">921600</param>
                     <param name="usb_can_adapter">damiao</param>
                 </xacro:unless>

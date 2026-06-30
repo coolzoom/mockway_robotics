@@ -1,7 +1,7 @@
 can:
   adapter_type: damiao
   can_baudrate: 1000000
-  port: COM5
+  port: /dev/cu.usbmodem00000000050C1
   serial_baudrate: 921600
 control:
   compensation_mode: gravity

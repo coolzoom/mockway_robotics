@@ -2,14 +2,24 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="mockway_description">
     <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
     <xacro:arg name="use_mock_hardware" default="false" />
+    <!-- USB-CAN 串口设备：WSL/Linux 默认 /dev/ttyACM0；macOS 传 /dev/cu.usbmodem* -->
+    <xacro:arg name="can_interface" default="/dev/ttyACM0" />
+    <!-- 碰撞几何：mesh(默认, Linux/WSL 用网格) | primitive(macOS 用包围盒, 规避 FCL 在 Eigen5 下崩溃) -->
+    <xacro:arg name="collision_mode" default="mesh" />
+    <xacro:property name="collision_mode_prop" value="$(arg collision_mode)" />
 
     <!-- Import mockway_description urdf file -->
-    <xacro:include filename="$(find mockway_description)/urdf/mockway_description.urdf" />
+    <xacro:if value="${collision_mode_prop == 'primitive'}">
+        <xacro:include filename="$(find mockway_description)/urdf/mockway_description.primitive_collision.urdf" />
+    </xacro:if>
+    <xacro:unless value="${collision_mode_prop == 'primitive'}">
+        <xacro:include filename="$(find mockway_description)/urdf/mockway_description.urdf" />
+    </xacro:unless>
 
     <!-- Import control_xacro -->
     <xacro:include filename="mockway_description.ros2_control.xacro" />
 
 
-    <xacro:mockway_description_ros2_control name="MockwaySystem" initial_positions_file="$(arg initial_positions_file)" use_mock_hardware="$(arg use_mock_hardware)"/>
+    <xacro:mockway_description_ros2_control name="MockwaySystem" initial_positions_file="$(arg initial_positions_file)" use_mock_hardware="$(arg use_mock_hardware)" can_interface="$(arg can_interface)"/>
 
 </robot>

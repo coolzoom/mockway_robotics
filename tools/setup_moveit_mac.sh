@@ -185,6 +185,12 @@ build_ws() {
         # 清理上一次（旧 src 布局）残留的 build/install，避免 CMakeCache 里的源路径失效
         rm -rf "$WS_DIR/build/$pkg" "$WS_DIR/install/$pkg" 2>/dev/null || true
     done
+    # 生成 macOS 包围盒碰撞 URDF（规避 FCL 网格 BVH 在 Eigen5/RoboStack 下的崩溃）
+    if [[ -f "$SCRIPT_DIR/gen_macos_collision_urdf.py" ]]; then
+        say "[ws] 生成 macOS 包围盒碰撞 URDF (collision_mode=primitive) ..."
+        python3 "$SCRIPT_DIR/gen_macos_collision_urdf.py" 2>&1 | tee -a "$LOG" \
+            || warn "生成 primitive 碰撞 URDF 失败；MoveIt 可能因网格碰撞而崩溃"
+    fi
     say "[ws] colcon 编译: $BUILD_PKGS"
     run_in_env "cd '$WS_DIR' && colcon build --symlink-install --packages-select $BUILD_PKGS" 2>&1 | tee -a "$LOG"
     local rc=${PIPESTATUS[0]}
@@ -246,17 +252,33 @@ do_launch_demo() {
     local mock="true"
     [[ "$mode" == "real" || "$mode" == "2" ]] && mock="false"
 
+    local launch_extra=""
     if [[ "$mock" == "false" ]]; then
+        # 真机：确定 macOS 串口设备（优先 call-out 设备 /dev/cu.*）
+        # 顺序：第二个参数 > 环境变量 MOCKWAY_CAN_INTERFACE > 自动探测 cu.usbmodem*/cu.usbserial*
+        local dev="${2:-${MOCKWAY_CAN_INTERFACE:-}}"
+        if [[ -z "$dev" ]]; then
+            dev="$(ls /dev/cu.usbmodem* 2>/dev/null | head -n1)"
+            [[ -z "$dev" ]] && dev="$(ls /dev/cu.usbserial* 2>/dev/null | head -n1)"
+        fi
+        if [[ -z "$dev" ]]; then
+            err "未找到 USB-CAN 串口设备 (/dev/cu.usbmodem* 或 /dev/cu.usbserial*)。请插入适配器，"
+            err "或显式指定: tools/setup_moveit_mac.sh 3 real /dev/cu.usbmodemXXXX"
+            say "  当前 /dev/cu.* 设备:"
+            ls /dev/cu.* 2>/dev/null | sed 's/^/    /' || say "    (无)"
+            return 1
+        fi
         say "[mockway] 真机模式 (use_mock_hardware:=false) — USB-CAN 串口直连"
-        say "[mockway] 请确认 xacro 的 ros2_control 参数: can_type=usb_can,"
-        say "          can_interface 指向 macOS 串口设备（/dev/tty.usbserial-* 或 /dev/tty.usbmodem*）"
-        say "          当前已连接串口:"
-        ls /dev/tty.usb* 2>/dev/null | sed 's/^/            /' || say "            (未发现 /dev/tty.usb*，请插入 USB-CAN 适配器)"
+        say "[mockway] 串口设备: $dev  (can_type=usb_can, 921600, damiao)"
+        say "[mockway] macOS 用 /dev/cu.*（call-out）设备，而非 /dev/tty.*（避免阻塞等待载波）"
+        launch_extra=" can_interface:=$dev"
     else
         say "[mockway] 仿真模式 (use_mock_hardware:=true, mock_components/GenericSystem)"
     fi
+    # macOS 始终用 primitive(包围盒) 碰撞，规避 FCL 网格 BVH 在 Eigen5/RoboStack 下的 move_group 崩溃
+    say "[mockway] 碰撞几何: primitive(包围盒)  —  规避 macOS FCL 网格崩溃"
     say "[mockway] 启动 MoveIt2 Demo (RViz 原生窗口) ..."
-    run_in_env "source '$WS_DIR/install/setup.bash' && export QT_QPA_PLATFORM=cocoa && ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=$mock"
+    run_in_env "source '$WS_DIR/install/setup.bash' && export QT_QPA_PLATFORM=cocoa && ros2 launch moveit_mockway_config demo.launch.py use_mock_hardware:=$mock collision_mode:=primitive$launch_extra"
 }
 
 # ------------------------------------------------------------
@@ -325,19 +347,20 @@ do_hw_info() {
     say "     (termios + IOSSIOSPEED 设置 921600 波特率)"
     say ""
     say " macOS 接真机步骤:"
-    say "   1. 插入 USB-CAN 适配器，确认下方出现 /dev/tty.usbserial-* 或 /dev/tty.usbmodem*"
-    say "   2. 在 xacro 的 ros2_control hardware 参数中设置:"
-    say "        <param name=\"can_type\">usb_can</param>"
-    say "        <param name=\"can_interface\">/dev/tty.usbserial-XXXX</param>"
-    say "        <param name=\"usb_can_adapter\">damiao</param>   # 或 witmotion / auto"
-    say "   3. 菜单 [3] 选 [2] 真机，或运行: tools/setup_moveit_mac.sh 3 real"
+    say "   1. 插入 USB-CAN 适配器，确认下方出现 /dev/cu.usbmodem* 或 /dev/cu.usbserial*"
+    say "   2. 直接运行真机模式（脚本会自动探测 /dev/cu.* 并作为 can_interface 传入）:"
+    say "        tools/setup_moveit_mac.sh 3 real"
+    say "      或显式指定设备:"
+    say "        tools/setup_moveit_mac.sh 3 real /dev/cu.usbmodem00000000050C1"
+    say "   3. can_interface 是 launch 参数，无需改 xacro（默认 /dev/ttyACM0 仅用于 Linux/WSL）"
     say ""
-    say " 注: 若要用 can0 这种内核 SocketCAN 接口，仍需 Linux (setup_moveit_ubuntu.sh)"
-    say "     或 Windows+WSL2 (setup_wsl_moveit.bat, 含 usbipd 透传)。"
+    say " 提示: macOS 请用 /dev/cu.*（call-out）而不是 /dev/tty.*（后者会阻塞等待载波信号 DCD）"
+    say " 注:   若要用 can0 这种内核 SocketCAN 接口，仍需 Linux (setup_moveit_ubuntu.sh)"
+    say "       或 Windows+WSL2 (setup_wsl_moveit.bat, 含 usbipd 透传)。"
     say ""
-    say " 当前 macOS 已连接的串口设备:"
-    ls -la /dev/tty.usb* /dev/tty.usbserial* /dev/tty.usbmodem* 2>/dev/null \
-        || say "  (未发现 /dev/tty.usb* 设备，请插入 USB-CAN 适配器)"
+    say " 当前 macOS 已连接的 call-out 串口设备:"
+    ls -la /dev/cu.usbmodem* /dev/cu.usbserial* 2>/dev/null \
+        || say "  (未发现 /dev/cu.usb* 设备，请插入 USB-CAN 适配器)"
 }
 
 # ------------------------------------------------------------
